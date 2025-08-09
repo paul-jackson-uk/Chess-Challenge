@@ -396,3 +396,5 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+Chess-Challenge/.DS_Store
+.DS_Store
