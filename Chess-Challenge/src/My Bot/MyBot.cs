@@ -42,6 +42,9 @@ public class MyBot : IChessBot
 
         if (isWhite && ((board.WhitePiecesBitboard & (1UL << 28)) != 0))
         {
+            string diagram = board.CreateDiagram(true, false, false);
+
+            System.Console.WriteLine("Position: " + diagram);
             // Example of a positional bonus for White's King being on e1
             score += 50; // Arbitrary bonus for pawn centre 
         }
@@ -54,55 +57,43 @@ public class MyBot : IChessBot
         return score;
     }
 
-    private int get_best_move(Board board, bool isWhite, uint depth, Move bestMove, ref int bestScore, bool topLevel)
+    private (int, Move) get_best_move(Board board, bool isWhite, uint depth)
     {
         if (depth-- == 0)
         {
             int score = Evaluate(board, isWhite);
-            if (score == 1600)
-            {
-                string diagram = board.CreateDiagram(true, false, false);
-                System.Console.WriteLine("Score 1600, position " + diagram);
-                System.Console.WriteLine("White pieces bitbard: " + board.WhitePiecesBitboard);
-
-            }
-            return score;
+            return (score, Move.NullMove);
         }
 
         Move[] moves = board.GetLegalMoves();
+        Move best_move_this_level = Move.NullMove;
+        int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
         foreach (Move move in moves)
         {
             board.MakeMove(move);
-            int score = get_best_move(board, isWhite, depth, bestMove, ref bestScore, false);
+            int score;
+            (score, _) = get_best_move(board, isWhite, depth);
             board.UndoMove(move);
 
-            if (board.IsWhiteToMove == isWhite)
+            if (isWhite == board.IsWhiteToMove)
             {
-                // our move
-                if (score > bestScore)
+                if (score > best_score_this_level)
                 {
-                    string diagram = board.CreateDiagram(true, false, false);
-                    System.Console.WriteLine($"Best position white move, score {score}\n{diagram}");
-                    bestScore = score;
-                    if (topLevel)
-                    {
-                        bestMove = move; // Update the best move at the top level
-                    }
+                    best_score_this_level = score;
+                    best_move_this_level = move;
                 }
             }
             else
             {
-                // opponent's move
-                if (score < bestScore)
+                if (score < best_score_this_level)
                 {
-                    string diagram = board.CreateDiagram(true, false, false);
-                    System.Console.WriteLine($"Best position black move {diagram}");
-                    bestScore = score;
+                    best_score_this_level = score;
+                    best_move_this_level = move;
                 }
             }
         }
 
-        return bestScore;
+        return (best_score_this_level, best_move_this_level);
     }
 
     public Move Think(Board board, Timer timer)
@@ -110,8 +101,9 @@ public class MyBot : IChessBot
         uint depth = 3;
         bool isWhite = board.IsWhiteToMove;
         Move best_move = Move.NullMove;
+        int best_score = isWhite ? int.MinValue : int.MaxValue;
         int evaluation = int.MinValue;
-        int best_score = get_best_move(board, isWhite, depth, best_move, ref evaluation, true);
+        (best_score, best_move) = get_best_move(board, isWhite, depth);
         System.Console.WriteLine($"Best move evaluation: {evaluation}, best_score {best_score}"  );
         return best_move;
     }
