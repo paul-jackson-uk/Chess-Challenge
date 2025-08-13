@@ -41,7 +41,7 @@ public class MyBot : IChessBot
         return score;
     }
 
-    private (int, Move) get_best_move(Board board, bool isWhite, int depth)
+    private (int, Move) get_best_move(Board board, bool isWhite, int depth, int alpha, int beta)
     {
         // Have already evaluated this position?
         if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
@@ -59,7 +59,7 @@ public class MyBot : IChessBot
         {
             int score;
             board.MakeMove(move);
-            (score, _) = get_best_move(board, isWhite, depth);
+            (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
             board.UndoMove(move);
 
             if (isWhite == board.IsWhiteToMove)
@@ -69,17 +69,29 @@ public class MyBot : IChessBot
                 {
                     best_score_this_level = score;
                     best_move_this_level = move;
+                    alpha = Math.Max(alpha, score);
+                    if (beta <= alpha)
+                    {
+                        // Beta cut-off
+                        evaluated_positions.Add(board.ZobristKey, best_score_this_level);
+                        return (best_score_this_level, best_move_this_level);
+                    }
                 }
             }
             else
             {
                 // opponent's move
-                bool have_already_found_a_move = best_move_this_level != Move.NullMove;
                 if (score < best_score_this_level)
                 {
                     best_score_this_level = score;
                     best_move_this_level = move;
-                    if (have_already_found_a_move) continue; // we have already found a better move
+                    beta = Math.Min(beta, score);
+                    if (beta <= alpha)
+                    {
+                        // Alpha cut-off
+                        evaluated_positions.Add(board.ZobristKey, best_score_this_level);
+                        return (best_score_this_level, best_move_this_level);
+                    }
                 }
             }
         }
@@ -107,7 +119,9 @@ public class MyBot : IChessBot
         bool isWhite = board.IsWhiteToMove;
         Move best_move = Move.NullMove;
         int best_score = isWhite ? int.MinValue : int.MaxValue;
-        (best_score, best_move) = get_best_move(board, isWhite, depth);
+        int alpha = int.MinValue;
+        int beta = int.MaxValue;
+        (best_score, best_move) = get_best_move(board, isWhite, depth, alpha, beta);
         System.Console.Write($"Best move score {best_score}"  );
         System.Console.Write($"Total evaluations: {evaluationCount} ");
         Move[] history = board.GameMoveHistory.ToArray();
