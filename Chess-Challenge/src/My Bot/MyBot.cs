@@ -1,50 +1,34 @@
 ﻿using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Runtime.InteropServices;
 using ChessChallenge.API;
-
+using System.Collections;
+using System;
 public class MyBot : IChessBot
 {
-    struct evaluation
-    {
-        public int score;
-        public Move move;
-    }
+
+    public static int evaluationCount = 0;
+    private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
+    private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
     private int Evaluate(Board board, bool isWhite)
     {
-        ulong whitePieces = board.WhitePiecesBitboard;
+        evaluationCount++;
+
         // Simple evaluation function: count material balance
         int score = 0;
-        for (int i = 0; i < 64; i++)
+        PieceList[] pieceLists = board.GetAllPieceLists();
+        foreach (PieceList pl in pieceLists)
         {
-            Square square = new Square(i);
-            Piece piece = board.GetPiece(square);
-            if (piece.IsNull) continue;
+            int value = pieceValues[(int) pl.TypeOfPieceInList];
 
-            int pieceValue = 0;
-            switch (piece.PieceType)
-            {
-                case PieceType.Pawn: pieceValue = 100; break;
-                case PieceType.Knight: pieceValue = 320; break;
-                case PieceType.Bishop: pieceValue = 330; break;
-                case PieceType.Rook: pieceValue = 500; break;
-                case PieceType.Queen: pieceValue = 900; break;
-                case PieceType.King: pieceValue = 20000; break;
-            }
-            if (!piece.IsWhite)
-            {
-                pieceValue = -pieceValue;
-            }
+            if (pl.IsWhitePieceList != isWhite) value = -value;
 
-            score += isWhite ? pieceValue : -pieceValue;
-
+            score += value * pl.Count;
         }
 
         if (isWhite && ((board.WhitePiecesBitboard & (1UL << 28)) != 0))
         {
-            string diagram = board.CreateDiagram(true, false, false);
-
-            System.Console.WriteLine("Position: " + diagram);
             // Example of a positional bonus for White's King being on e1
             score += 50; // Arbitrary bonus for pawn centre 
         }
@@ -57,26 +41,30 @@ public class MyBot : IChessBot
         return score;
     }
 
-    private (int, Move) get_best_move(Board board, bool isWhite, uint depth)
+    private (int, Move) get_best_move(Board board, bool isWhite, int depth)
     {
-        if (depth-- == 0)
+        // Have already evaluated this position?
+        if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
         {
-            int score = Evaluate(board, isWhite);
-            return (score, Move.NullMove);
+            return (cached_score, Move.NullMove);
         }
 
-        Move[] moves = board.GetLegalMoves();
         Move best_move_this_level = Move.NullMove;
         int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
+
+        depth--;
+        Move[] moves = board.GetLegalMoves(depth < 0);
+        
         foreach (Move move in moves)
         {
-            board.MakeMove(move);
             int score;
+            board.MakeMove(move);
             (score, _) = get_best_move(board, isWhite, depth);
             board.UndoMove(move);
 
             if (isWhite == board.IsWhiteToMove)
             {
+                // our move
                 if (score > best_score_this_level)
                 {
                     best_score_this_level = score;
@@ -85,26 +73,49 @@ public class MyBot : IChessBot
             }
             else
             {
+                // opponent's move
+                bool have_already_found_a_move = best_move_this_level != Move.NullMove;
                 if (score < best_score_this_level)
                 {
                     best_score_this_level = score;
                     best_move_this_level = move;
+                    if (have_already_found_a_move) continue; // we have already found a better move
                 }
             }
         }
 
-        return (best_score_this_level, best_move_this_level);
+        if (best_move_this_level != Move.NullMove)
+        {
+            evaluated_positions.Add(board.ZobristKey, best_score_this_level);
+            return (best_score_this_level, best_move_this_level);
+        }
+        else
+        {
+            int evaluation = Evaluate(board, isWhite);
+            evaluated_positions.Add(board.ZobristKey, evaluation);
+
+            // We must have looked at no moves because we are at max depth and there are no captures or checks
+            return (evaluation, Move.NullMove);
+        }
     }
 
     public Move Think(Board board, Timer timer)
     {
-        uint depth = 3;
+        evaluationCount = 0;
+        evaluated_positions.Clear();
+        int depth = 2;
         bool isWhite = board.IsWhiteToMove;
         Move best_move = Move.NullMove;
         int best_score = isWhite ? int.MinValue : int.MaxValue;
-        int evaluation = int.MinValue;
         (best_score, best_move) = get_best_move(board, isWhite, depth);
-        System.Console.WriteLine($"Best move evaluation: {evaluation}, best_score {best_score}"  );
+        System.Console.Write($"Best move score {best_score}"  );
+        System.Console.Write($"Total evaluations: {evaluationCount} ");
+        Move[] history = board.GameMoveHistory.ToArray();
+        foreach (Move m in history)
+        {
+            System.Console.Write($" {m.ToString()}");
+        }
+        System.Console.WriteLine("");
         return best_move;
     }
 }
