@@ -7,7 +7,96 @@ using System.Collections;
 using System;
 public class MyBot : IChessBot
 {
+    int [] pawn_square_scores = new int[] {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        20, 20, 10, 0, 0, 20, 20, 20,
+        10, 10, 10, 20, 20, 20, 20, 10,
+        5 ,5 ,10 ,35 ,35 ,10 ,5 ,5 ,
+        0 ,0 ,0 ,20 ,20 ,0 ,0 ,0 ,
+        -5,-5,-10,-5,-5,-10,-5,-5,
+        -10,-10,-20,-30,-30,-20,-10,-10,
+        0, 0, 0, 0, 0, 0, 0, 0
+    };
 
+    int[] knight_square_scores = new int[] {
+        -100, -50, -30, -30, -30, -30, -30, -100,
+        -50, -50, -20, -20, -20, -20, -50, -50,
+        -30, -20, 10, 10, 10, 10, -20, -30,
+        -30, -20, 10, 15, 15, 10, -20, -30,
+        -30, -10, 10, 15, 15, 10, 10, -30,
+        -30, 0, 10, 10, 10, 10, 0, -30,
+        -50, -50, -20, -20, -20, -20, -50, -50,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0
+    };
+
+    int[] rook_square_scores = new int[] {
+        0, 0, 0, 0, 0, 0, 0, 0,
+        5, 10, 10, 10, 10, 10, 10, 5,
+        -5, 0, 0, 0, 0, 0, -5, -5,
+        -5, -5, -5, -5, -5, -5, -5, -5,
+        -5, -5, -5, -5, -5, -5, -5, -5,
+        -10,-10,-10,-10,-10,-10,-10,-10,
+        -20,-20,-20,-20,-20,-20,-20,-20,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0
+    };
+
+    int[] bishop_square_scores = new int[] {
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        10, 10, 10, 10, 10, 10, 10, 10,
+        -5, -5, -5, -5, -5, -5, -5, -5,
+        -5, -5, -5, -5, -5, -5, -5, -5,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0
+    };
+
+    int[] queen_square_scores = new int[] {
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        10, 10, 10, 10, 10, 10, 10, 10,
+        -5, -5, -5, -5, -5, -5, -5, -5,
+        -5, -5, -5, -5, -5, -5, -5, -5,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0
+    }; 
+
+    int[] king_square_scores = new int[] {
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        5 ,5 ,5 ,5 ,5 ,5 ,5 ,5 ,
+        10,10,10,10,10,10,10,10,
+        20,20,20,20,20,20,20,20,
+        30,30,30,30,30,30,30,30,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0
+    };
+    int[] none_square_scores = new int[] {
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        0 ,0 ,0 ,0 ,0 ,0 ,0 ,0,
+        1, 1, 1, 1, 1, 1, 1, 1
+    };
+    int[][] square_scores;
+
+    public MyBot()
+    {
+        square_scores = new int[][]
+        {
+            none_square_scores,
+            pawn_square_scores,
+            knight_square_scores,
+            bishop_square_scores,
+            rook_square_scores,
+            queen_square_scores,
+            king_square_scores
+        };
+    }
     public static int evaluationCount = 0;
     private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
@@ -20,13 +109,34 @@ public class MyBot : IChessBot
         PieceList[] pieceLists = board.GetAllPieceLists();
         foreach (PieceList pl in pieceLists)
         {
-            int value = pieceValues[(int) pl.TypeOfPieceInList];
-
+            // add up material value of pieces
+            int value = pieceValues[(int)pl.TypeOfPieceInList];
             if (pl.IsWhitePieceList != isWhite) value = -value;
-
             score += value * pl.Count;
+
+            // Add a position score
+            var square_scores = this.square_scores[(int)pl.TypeOfPieceInList];
+            {
+                // Add positional score for peices
+                for (int i = 0; i < pl.Count; i++)
+                {
+                    Piece piece = pl.GetPiece(i);
+                    int squareIndex = piece.Square.Index;
+                    int sq = (piece.IsWhite) ? squareIndex : 63 - squareIndex;
+                    if (isWhite == piece.IsWhite)
+                    {
+                        score += square_scores[sq];
+                    }
+                    else
+                    {
+                        score -= square_scores[sq];
+                    }
+                }
+            }
+
         }
 
+        
         if (isWhite && ((board.WhitePiecesBitboard & (1UL << 28)) != 0))
         {
             // Example of a positional bonus for White's King being on e1
