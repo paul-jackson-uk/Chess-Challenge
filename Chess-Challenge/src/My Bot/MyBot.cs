@@ -43,23 +43,27 @@ public class MyBot : IChessBot
 
     private (int, Move) get_best_move(Board board, bool isWhite, int depth, int alpha, int beta)
     {
-        // Have already evaluated this position?
-        if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
-        {
-            return (cached_score, Move.NullMove);
-        }
 
         Move best_move_this_level = Move.NullMove;
         int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
 
         depth--;
         Move[] moves = board.GetLegalMoves(depth < 0);
-        
+
         foreach (Move move in moves)
         {
             int score;
             board.MakeMove(move);
-            (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
+            // Have already evaluated this position?
+            if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
+            {
+                score = cached_score;
+            }
+            else
+            {
+                (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
+                evaluated_positions.TryAdd(board.ZobristKey, score);
+            }
             board.UndoMove(move);
 
             if (isWhite == board.IsWhiteToMove)
@@ -73,7 +77,6 @@ public class MyBot : IChessBot
                     if (beta <= alpha)
                     {
                         // Beta cut-off
-                        evaluated_positions.Add(board.ZobristKey, best_score_this_level);
                         return (best_score_this_level, best_move_this_level);
                     }
                 }
@@ -89,7 +92,6 @@ public class MyBot : IChessBot
                     if (beta <= alpha)
                     {
                         // Alpha cut-off
-                        evaluated_positions.Add(board.ZobristKey, best_score_this_level);
                         return (best_score_this_level, best_move_this_level);
                     }
                 }
@@ -98,13 +100,11 @@ public class MyBot : IChessBot
 
         if (best_move_this_level != Move.NullMove)
         {
-            evaluated_positions.Add(board.ZobristKey, best_score_this_level);
             return (best_score_this_level, best_move_this_level);
         }
         else
         {
             int evaluation = Evaluate(board, isWhite);
-            evaluated_positions.Add(board.ZobristKey, evaluation);
 
             // We must have looked at no moves because we are at max depth and there are no captures or checks
             return (evaluation, Move.NullMove);
@@ -115,7 +115,7 @@ public class MyBot : IChessBot
     {
         evaluationCount = 0;
         evaluated_positions.Clear();
-        int depth = 2;
+        int depth = 4;
         bool isWhite = board.IsWhiteToMove;
         Move best_move = Move.NullMove;
         int best_score = isWhite ? int.MinValue : int.MaxValue;
