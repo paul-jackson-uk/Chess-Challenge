@@ -61,16 +61,7 @@ public class MyBot : IChessBot
 
         if (board.IsInCheckmate())
         {
-            if (isWhite == board.IsWhiteToMove)
-            {
-                // We are in checkmate, so we lose
-                return (int.MinValue, Move.NullMove);
-            }
-            else
-            {
-                // They are in checkmate, so we win
-                return (int.MaxValue, Move.NullMove);
-            }
+            return (isWhite == board.IsWhiteToMove ? int.MinValue : int.MaxValue, Move.NullMove);
         }
         else if (--depth > -12)
         {
