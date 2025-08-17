@@ -52,6 +52,21 @@ public class MyBot : IChessBot
         return score;
     }
 
+    class MoveWrapper : IComparable<MoveWrapper>
+    {
+        public Move Move { get; set; }
+        public bool makes_check { get; set; }
+
+        public int CompareTo(MoveWrapper other)
+        {
+            // Sort by whether the move makes a check first, then by whether it's a capture
+            if (makes_check && !other.makes_check) return -1;
+            if (!makes_check && other.makes_check) return 1;
+            if (Move.IsCapture && !other.Move.IsCapture) return -1;
+            if (!Move.IsCapture && other.Move.IsCapture) return 1;
+            return 0; // Equal priority
+        }
+    };
     
     private (int, Move) get_best_move(Board board, bool isWhite, int depth, int alpha, int beta)
     {
@@ -63,23 +78,34 @@ public class MyBot : IChessBot
         {
             return (isWhite == board.IsWhiteToMove ? int.MinValue : int.MaxValue, Move.NullMove);
         }
-        else if (--depth > -12)
+        else if (--depth > -10)
         {
-            Move[] moves = board.GetLegalMoves(depth < 0);
-            if (moves.Length > 1)
-            {
-                Array.Sort(moves, (a, b) =>
-                {
-                    if (a.IsCapture && !b.IsCapture) return -1;
-                    if (!a.IsCapture && b.IsCapture) return 1;
-                    return 0;
-                });
-            }
+            Move[] moves = board.GetLegalMoves();
 
+            // Sort the moves
+            List<MoveWrapper> moveWrappers = new List<MoveWrapper>();
             foreach (Move move in moves)
             {
-                int score = 0;
+                bool isCapture = move.IsCapture;
+                // Make moves to see which result in check.
                 board.MakeMove(move);
+                bool makes_check = board.IsInCheck();
+                if (depth >= 0 || isCapture || makes_check)
+                {
+                    // Look at all moves if we are not too deep in. Otherwise just checks and captures
+                    moveWrappers.Add(new MoveWrapper { Move = move, makes_check = makes_check });
+                }
+                board.UndoMove(move);
+            }
+
+            // Sort moves by whether they make a check first, then by whether they are captures
+            moveWrappers.Sort();
+
+            // Now start the analysis
+            foreach (MoveWrapper move in moveWrappers)
+            {
+                int score = 0;
+                board.MakeMove(move.Move);
                 try
                 {
                     if (board.IsDraw())
@@ -107,7 +133,7 @@ public class MyBot : IChessBot
                 }
                 finally
                 {
-                    board.UndoMove(move);
+                    board.UndoMove(move.Move);
                 }
 
                 if (isWhite == board.IsWhiteToMove)
@@ -116,7 +142,7 @@ public class MyBot : IChessBot
                     if (score > best_score_this_level)
                     {
                         best_score_this_level = score;
-                        best_move_this_level = move;
+                        best_move_this_level = move.Move;
                         alpha = Math.Max(alpha, score);
                         if (beta <= alpha)
                         {
@@ -131,7 +157,7 @@ public class MyBot : IChessBot
                     if (score < best_score_this_level)
                     {
                         best_score_this_level = score;
-                        best_move_this_level = move;
+                        best_move_this_level = move.Move;
                         beta = Math.Min(beta, score);
                         if (beta <= alpha)
                         {
