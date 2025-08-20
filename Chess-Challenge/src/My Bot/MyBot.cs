@@ -93,17 +93,6 @@ public class MyBot : IChessBot
         return score;
     }
 
-    private bool logginOn = false;
-    void Log(int depth, string message )
-    {
-        if (!logginOn) return;
-        if (depth < 0) return;
-        for (int i = 0; i < 4 - depth; i++)
-        {
-            System.Console.Write("\t");
-        }
-        System.Console.WriteLine(message);
-    }
     class MoveWrapper : IComparable<MoveWrapper>
     {
         public Move Move { get; set; }
@@ -127,15 +116,7 @@ public class MyBot : IChessBot
         int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
         List<MoveWrapper> moveWrappers = new List<MoveWrapper>();
 
-        if (board.IsInCheckmate())
-        {
-            return (isWhite == board.IsWhiteToMove ? -checkmateScore : checkmateScore, Move.NullMove);
-        }
-        else if (board.IsDraw())
-        {
-            return (0, Move.NullMove);
-        }
-        else if (--depth > -10)
+        if (--depth > -10)
         {
             Move[] moves = board.GetLegalMoves();
 
@@ -162,37 +143,29 @@ public class MyBot : IChessBot
             {
                 int score = 0;
                 board.MakeMove(move.Move);
-                try
+
+                // Have already evaluated this position?
+                if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
+                {
+                    score = cached_score;
+                }
+                else
                 {
                     if (board.IsDraw())
                     {
                         score = 0;
                     }
+                    else if (board.IsInCheckmate())
+                    {
+                        score = isWhite == board.IsWhiteToMove ? -checkmateScore : checkmateScore;
+                    }
                     else
                     {
-
-                        // Have already evaluated this position?
-                        if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
-                        {
-                            score = cached_score;
-                        }
-                        else
-                        {
-
-                            (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
-                            evaluated_positions.TryAdd(board.ZobristKey, score);
-                        }
+                        (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
                     }
+                    evaluated_positions.TryAdd(board.ZobristKey, score);
                 }
-                catch (Exception e)
-                {
-                    System.Console.WriteLine("Exception: " + e.Message);
-                    System.Console.WriteLine(board.CreateDiagram());
-                }
-                finally
-                {
-                    board.UndoMove(move.Move);
-                }
+                board.UndoMove(move.Move);
 
                 if (isWhite == board.IsWhiteToMove)
                 {
@@ -242,7 +215,6 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
-        System.Console.WriteLine("Thinking...");
         evaluationCount = 0;
         evaluated_positions.Clear();
         var all_bb = board.AllPiecesBitboard;
@@ -259,12 +231,11 @@ public class MyBot : IChessBot
             default: depth = 2; break;
         }
 
-        bool isWhite = board.IsWhiteToMove;
         Move best_move = Move.NullMove;
-        int best_score = isWhite ? int.MinValue : int.MaxValue;
+        int best_score = 0;
         int alpha = int.MinValue;
         int beta = int.MaxValue;
-        (best_score, best_move) = get_best_move(board, isWhite, depth, alpha, beta);
+        (best_score, best_move) = get_best_move(board, board.IsWhiteToMove, depth, alpha, beta);
 
         if (!board.GetLegalMoves().Contains(best_move))
         {
