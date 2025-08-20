@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 public class MyBot : IChessBot
 {
     private uint numLegalMovesCalls = 0;
+    private const int checkmateScore = 1000000;
     public static int evaluationCount = 0;
     private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
@@ -25,20 +26,61 @@ public class MyBot : IChessBot
     private int Evaluate(Board board, bool isWhite)
     {
         evaluationCount++;
+        bool isEndGame = false;
 
+        PieceList[] pieceLists = board.GetAllPieceLists();
+
+        // Get opponent attacking peice count
+        int opponentAttackingPieceCount = 0;
+        IEnumerable<PieceList> opponentPieceQuery =
+            from piece_list in pieceLists
+            where piece_list.IsWhitePieceList != isWhite
+            where pieceValues[(int) piece_list.TypeOfPieceInList] > 250
+            select piece_list;
+
+        foreach (PieceList pl in opponentPieceQuery)
+        {
+            opponentAttackingPieceCount += pl.Count * pieceValues[(int)pl.TypeOfPieceInList];
+        }
+
+        isEndGame = opponentAttackingPieceCount < 700;
+        
         // Simple evaluation function: count material balance
         int score = 0;
-        PieceList[] pieceLists = board.GetAllPieceLists();
         foreach (PieceList pl in pieceLists)
         {
             // add up material value of pieces
             int value = pieceValues[(int)pl.TypeOfPieceInList];
-            if (pl.TypeOfPieceInList is not (PieceType.Queen or PieceType.King or PieceType.Rook))
+            for (int i = 0; i < pl.Count; i++)
             {
-                for (int i = 0; i < pl.Count; i++)
+                // Add positional score for pieces
+                switch (pl.TypeOfPieceInList)
                 {
-                    // Add positional score for pieces
-                    value += 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                    case PieceType.Pawn:
+                        break;
+                    case PieceType.Knight:
+                        // Add positional score for pieces
+                        value += 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        break;
+                    case PieceType.Bishop:
+                        value += 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        break;
+                    case PieceType.Rook:
+                        break;
+                    case PieceType.Queen:
+                        if (isEndGame)
+                        {
+                            // In endgame, we want the queen to be more active
+                            value += 20 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        }
+                        break;
+                    case PieceType.King:
+                        if (isEndGame)
+                        {
+                            // In endgame, we want the king to be more active
+                            value += 30 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        }
+                        break;
                 }
             }
 
@@ -48,10 +90,20 @@ public class MyBot : IChessBot
 
         }
 
-
         return score;
     }
 
+    private bool logginOn = false;
+    void Log(int depth, string message )
+    {
+        if (!logginOn) return;
+        if (depth < 0) return;
+        for (int i = 0; i < 4 - depth; i++)
+        {
+            System.Console.Write("\t");
+        }
+        System.Console.WriteLine(message);
+    }
     class MoveWrapper : IComparable<MoveWrapper>
     {
         public Move Move { get; set; }
@@ -73,17 +125,21 @@ public class MyBot : IChessBot
 
         Move best_move_this_level = Move.NullMove;
         int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
+        List<MoveWrapper> moveWrappers = new List<MoveWrapper>();
 
         if (board.IsInCheckmate())
         {
-            return (isWhite == board.IsWhiteToMove ? int.MinValue : int.MaxValue, Move.NullMove);
+            return (isWhite == board.IsWhiteToMove ? -checkmateScore : checkmateScore, Move.NullMove);
+        }
+        else if (board.IsDraw())
+        {
+            return (0, Move.NullMove);
         }
         else if (--depth > -10)
         {
             Move[] moves = board.GetLegalMoves();
 
             // Sort the moves
-            List<MoveWrapper> moveWrappers = new List<MoveWrapper>();
             foreach (Move move in moves)
             {
                 bool isCapture = move.IsCapture;
@@ -114,6 +170,7 @@ public class MyBot : IChessBot
                     }
                     else
                     {
+
                         // Have already evaluated this position?
                         if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
                         {
@@ -121,6 +178,7 @@ public class MyBot : IChessBot
                         }
                         else
                         {
+
                             (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
                             evaluated_positions.TryAdd(board.ZobristKey, score);
                         }
@@ -185,11 +243,6 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         System.Console.WriteLine("Thinking...");
-        if (board.IsInCheckmate() || board.IsDraw())
-        {
-            System.Console.WriteLine("Checkmate or draw detected.");
-            //return Move.NullMove; // No valid moves if in checkmate or draw
-        }
         evaluationCount = 0;
         evaluated_positions.Clear();
         var all_bb = board.AllPiecesBitboard;
@@ -198,11 +251,11 @@ public class MyBot : IChessBot
 
         switch (BitboardHelper.GetNumberOfSetBits(all_bb))
         {
-            case < 6: depth = 12; break;
-            case < 8: depth = 10; break;
-            case < 10: depth = 8; break;
-            case < 14: depth = 6; break;
-            case < 18: depth = 4; break;
+            case < 6: depth = 10; break;
+            case < 8: depth = 8; break;
+            case < 10: depth = 6; break;
+            case < 14: depth = 5; break;
+            case < 18: depth = 3; break;
             default: depth = 2; break;
         }
 
@@ -212,13 +265,13 @@ public class MyBot : IChessBot
         int alpha = int.MinValue;
         int beta = int.MaxValue;
         (best_score, best_move) = get_best_move(board, isWhite, depth, alpha, beta);
-        System.Console.Write($"Best move score {best_score}"  );
 
         if (!board.GetLegalMoves().Contains(best_move))
         {
+            System.Console.WriteLine("ERROR: Best move not in legal moves!");
+            System.Console.WriteLine(" - Zobrist key: " + board.ZobristKey);
             throw new Exception("ERROR: I messed smt up");
         }
-        System.Console.WriteLine(" - Best move: " + best_move.ToString() + " - Evaluation count: " + evaluationCount);
         return best_move;
     }
 }
