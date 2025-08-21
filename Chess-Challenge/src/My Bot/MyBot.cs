@@ -93,56 +93,72 @@ public class MyBot : IChessBot
         return score;
     }
 
-    class MoveWrapper : IComparable<MoveWrapper>
+    IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
-        public Move Move { get; set; }
-        public bool makes_check { get; set; }
+        Move[] moves = board.GetLegalMoves();
+        List<Move> checkMoves = new List<Move>();
+        List<Move> captureMoves = new List<Move>();
+        List<Move> normalMoves = new List<Move>();
 
-        public int CompareTo(MoveWrapper other)
+        foreach (Move move in moves)
         {
-            // Sort by whether the move makes a check first, then by whether it's a capture
-            if (makes_check && !other.makes_check) return -1;
-            if (!makes_check && other.makes_check) return 1;
-            if (Move.IsCapture && !other.Move.IsCapture) return -1;
-            if (!Move.IsCapture && other.Move.IsCapture) return 1;
-            return 0; // Equal priority
+            board.MakeMove(move);
+            if (board.IsInCheckmate())
+            {
+                board.UndoMove(move);
+                yield return move; // If this move results in checkmate, return it immediately
+                yield break;
+            }
+            else if (board.IsInCheck())
+            {
+                checkMoves.Add(move);
+            }
+            else if (move.IsCapture)
+            {
+                captureMoves.Add(move);
+            }
+            else if (!checksAndCapturesOnly)
+            {
+                normalMoves.Add(move);
+            }
+ 
+            board.UndoMove(move);
         }
-    };
+
+        // Provide the check moves first
+        foreach (Move move in checkMoves)
+        {
+            yield return move;
+        }
+
+        // Then the capture moves
+        foreach (Move move in captureMoves)
+        {
+            yield return move;
+        }
+
+        // Finally the normal moves
+        foreach (Move move in normalMoves)
+        {
+            yield return move;
+        }
+    }
     
+
     private (int, Move) get_best_move(Board board, bool isWhite, int depth, int alpha, int beta)
     {
-
         Move best_move_this_level = Move.NullMove;
         int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
-        List<MoveWrapper> moveWrappers = new List<MoveWrapper>();
 
         if (--depth > -10)
         {
-            Move[] moves = board.GetLegalMoves();
-
-            // Sort the moves
-            foreach (Move move in moves)
-            {
-                bool isCapture = move.IsCapture;
-                // Make moves to see which result in check.
-                board.MakeMove(move);
-                bool makes_check = board.IsInCheck();
-                if (depth >= 0 || isCapture || makes_check)
-                {
-                    // Look at all moves if we are not too deep in. Otherwise just checks and captures
-                    moveWrappers.Add(new MoveWrapper { Move = move, makes_check = makes_check });
-                }
-                board.UndoMove(move);
-            }
-
-            // Sort moves by whether they make a check first, then by whether they are captures
-            moveWrappers.Sort();
+            var sortedMoves = GetSortedMoves(board, depth < 0);
 
             // Now start the analysis
-            foreach (MoveWrapper move in moveWrappers)
+            foreach (Move move in sortedMoves)
             {
                 int score = 0;
-                board.MakeMove(move.Move);
+                board.MakeMove(move);
 
                 // Have already evaluated this position?
                 if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
@@ -165,7 +181,7 @@ public class MyBot : IChessBot
                     }
                     evaluated_positions.TryAdd(board.ZobristKey, score);
                 }
-                board.UndoMove(move.Move);
+                board.UndoMove(move);
 
                 if (isWhite == board.IsWhiteToMove)
                 {
@@ -173,7 +189,7 @@ public class MyBot : IChessBot
                     if (score > best_score_this_level)
                     {
                         best_score_this_level = score;
-                        best_move_this_level = move.Move;
+                        best_move_this_level = move;
                         alpha = Math.Max(alpha, score);
                         if (beta <= alpha)
                         {
@@ -188,7 +204,7 @@ public class MyBot : IChessBot
                     if (score < best_score_this_level)
                     {
                         best_score_this_level = score;
-                        best_move_this_level = move.Move;
+                        best_move_this_level = move;
                         beta = Math.Min(beta, score);
                         if (beta <= alpha)
                         {
@@ -206,10 +222,8 @@ public class MyBot : IChessBot
         }
         else
         {
-            int evaluation = Evaluate(board, isWhite);
-
             // We must have looked at no moves because we are at max depth and there are no captures or checks
-            return (evaluation, Move.NullMove);
+            return (Evaluate(board, isWhite), Move.NullMove);
         }
     }
 
