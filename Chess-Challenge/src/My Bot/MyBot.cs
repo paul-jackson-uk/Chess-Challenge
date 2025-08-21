@@ -8,7 +8,6 @@ using System;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 public class MyBot : IChessBot
 {
-    private uint numLegalMovesCalls = 0;
     private const int checkmateScore = 1000000;
     public static int evaluationCount = 0;
     private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
@@ -25,6 +24,7 @@ public class MyBot : IChessBot
     }
     private int Evaluate(Board board, bool isWhite)
     {
+        //System.Console.WriteLine("Evaluating position... FEN " + board.GetFenString());
         evaluationCount++;
         bool isEndGame = false;
 
@@ -36,6 +36,7 @@ public class MyBot : IChessBot
             from piece_list in pieceLists
             where piece_list.IsWhitePieceList != isWhite
             where pieceValues[(int) piece_list.TypeOfPieceInList] > 250
+            where pieceValues[(int) piece_list.TypeOfPieceInList] < 1000
             select piece_list;
 
         foreach (PieceList pl in opponentPieceQuery)
@@ -50,24 +51,27 @@ public class MyBot : IChessBot
         foreach (PieceList pl in pieceLists)
         {
             // add up material value of pieces
-            int value = pieceValues[(int)pl.TypeOfPieceInList];
+            int value = 0; 
             for (int i = 0; i < pl.Count; i++)
             {
                 // Add positional score for pieces
                 switch (pl.TypeOfPieceInList)
                 {
                     case PieceType.Pawn:
+                        value = pieceValues[(int)PieceType.Pawn];
                         break;
                     case PieceType.Knight:
                         // Add positional score for pieces
-                        value += 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        value = pieceValues[(int)PieceType.Knight] + 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
                         break;
                     case PieceType.Bishop:
-                        value += 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        value = pieceValues[(int)PieceType.Bishop] + GetEdgeDistance(pl.GetPiece(i).Square.Index);
                         break;
                     case PieceType.Rook:
+                        value = pieceValues[(int)PieceType.Rook];
                         break;
                     case PieceType.Queen:
+                        value = pieceValues[(int)PieceType.Queen];
                         if (isEndGame)
                         {
                             // In endgame, we want the queen to be more active
@@ -82,12 +86,11 @@ public class MyBot : IChessBot
                         }
                         break;
                 }
+
+                // Add or subtract piece value based on colour
+                if (pl.IsWhitePieceList != isWhite) value = -value;
+                score += value;
             }
-
-            // Add or subtract peice value based on colour
-            if (pl.IsWhitePieceList != isWhite) value = -value;
-            score += value * pl.Count;
-
         }
 
         return score;
@@ -148,7 +151,8 @@ public class MyBot : IChessBot
     private (int, Move) get_best_move(Board board, bool isWhite, int depth, int alpha, int beta)
     {
         Move best_move_this_level = Move.NullMove;
-        int best_score_this_level = (isWhite == board.IsWhiteToMove) ? int.MinValue : int.MaxValue;
+        bool ourMove = isWhite == board.IsWhiteToMove;
+        int best_score_this_level = ourMove ? int.MinValue : int.MaxValue;
 
         if (--depth > -10)
         {
@@ -164,6 +168,8 @@ public class MyBot : IChessBot
                 if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
                 {
                     score = cached_score;
+                    if (depth == 4) System.Console.WriteLine($"Cached position - Move: {move}, Score: {score}");
+                    evaluated_positions.TryAdd(board.ZobristKey, score);
                 }
                 else
                 {
@@ -173,17 +179,18 @@ public class MyBot : IChessBot
                     }
                     else if (board.IsInCheckmate())
                     {
-                        score = isWhite == board.IsWhiteToMove ? -checkmateScore : checkmateScore;
+                        score = ourMove ? -checkmateScore : checkmateScore;
                     }
                     else
                     {
                         (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
                     }
+                    if (depth == 4) System.Console.WriteLine($"Move: {move}, Score: {score}");
                     evaluated_positions.TryAdd(board.ZobristKey, score);
                 }
                 board.UndoMove(move);
 
-                if (isWhite == board.IsWhiteToMove)
+                if (ourMove)
                 {
                     // our move
                     if (score > best_score_this_level)
@@ -231,32 +238,23 @@ public class MyBot : IChessBot
     {
         evaluationCount = 0;
         evaluated_positions.Clear();
-        var all_bb = board.AllPiecesBitboard;
 
         int depth = 2;
 
-        switch (BitboardHelper.GetNumberOfSetBits(all_bb))
-        {
-            case < 6: depth = 10; break;
-            case < 8: depth = 8; break;
-            case < 10: depth = 6; break;
-            case < 14: depth = 5; break;
-            case < 18: depth = 3; break;
-            default: depth = 2; break;
-        }
-
-        Move best_move = Move.NullMove;
+		depth = BitboardHelper.GetNumberOfSetBits(board.AllPiecesBitboard) switch
+		{
+			< 6 => 10,
+			< 8 => 8,
+			< 14 => 5,
+			< 18 => 3,
+			_ => 2,
+		};
+		Move best_move = Move.NullMove;
         int best_score = 0;
         int alpha = int.MinValue;
         int beta = int.MaxValue;
         (best_score, best_move) = get_best_move(board, board.IsWhiteToMove, depth, alpha, beta);
 
-        if (!board.GetLegalMoves().Contains(best_move))
-        {
-            System.Console.WriteLine("ERROR: Best move not in legal moves!");
-            System.Console.WriteLine(" - Zobrist key: " + board.ZobristKey);
-            throw new Exception("ERROR: I messed smt up");
-        }
         return best_move;
     }
 }
