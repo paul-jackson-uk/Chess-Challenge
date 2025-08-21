@@ -10,7 +10,7 @@ public class MyBot : IChessBot
 {
     private const int checkmateScore = 1000000;
     public static int evaluationCount = 0;
-    private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
+    //private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
 
     private int GetEdgeDistance(int squareIndex)
@@ -128,14 +128,14 @@ public class MyBot : IChessBot
             board.UndoMove(move);
         }
 
-        // Provide the check moves first
-        foreach (Move move in checkMoves)
+        // Provide the capture moves first
+        foreach (Move move in captureMoves)
         {
             yield return move;
         }
 
-        // Then the capture moves
-        foreach (Move move in captureMoves)
+        // Then the check moves
+        foreach (Move move in checkMoves)
         {
             yield return move;
         }
@@ -165,13 +165,12 @@ public class MyBot : IChessBot
                 board.MakeMove(move);
 
                 // Have already evaluated this position?
-                if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
-                {
-                    score = cached_score;
-                    if (depth == 4) System.Console.WriteLine($"Cached position - Move: {move}, Score: {score}");
-                    evaluated_positions.TryAdd(board.ZobristKey, score);
-                }
-                else
+                //if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
+                //{
+                //    score = cached_score;
+                //    evaluated_positions.TryAdd(board.ZobristKey, score);
+                //}
+                //else
                 {
                     if (board.IsDraw())
                     {
@@ -185,8 +184,7 @@ public class MyBot : IChessBot
                     {
                         (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
                     }
-                    if (depth == 4) System.Console.WriteLine($"Move: {move}, Score: {score}");
-                    evaluated_positions.TryAdd(board.ZobristKey, score);
+                  //  evaluated_positions.TryAdd(board.ZobristKey, score);
                 }
                 board.UndoMove(move);
 
@@ -237,7 +235,7 @@ public class MyBot : IChessBot
     public Move Think(Board board, Timer timer)
     {
         evaluationCount = 0;
-        evaluated_positions.Clear();
+        //evaluated_positions.Clear();
 
         int depth = 2;
 
