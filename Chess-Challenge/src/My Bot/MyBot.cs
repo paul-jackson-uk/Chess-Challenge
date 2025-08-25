@@ -155,22 +155,13 @@ public class MyBot : IChessBot
         override public string ToString() { return $"{move} score {score}::"; }
     }
 
-    private (int, Move) get_best_move(Board board, bool isWhite, int depth, int max_depth, int alpha, int beta, List<Move> move_seq)
+
+    private (int, Move) get_best_move(Board board, bool isWhite, int depth, int max_depth, int alpha, int beta, List<Move> move_seq, int millisecondsAllowedPerTurn, ref bool abort_search, Timer timer)
     {
         Move best_move_this_level = Move.NullMove;
         bool ourMove = isWhite == board.IsWhiteToMove;
         int best_score_this_level = ourMove ? int.MinValue : int.MaxValue;
         List<move_score_t> move_scores = new();
-        var print_move_scores = () =>
-        {
-#if false
-            if (depth == 1)
-            {
-                move_scores.Sort((m1, m2) => m1.score.CompareTo(m2.score));
-                System.Console.WriteLine($"Move scores {String.Join(", ", move_scores)}");
-            }
-#endif
-        };
 
         depth++;
         bool checksAndCapturesOnly = depth > max_depth;
@@ -201,7 +192,7 @@ public class MyBot : IChessBot
                 {
                     move_seq.Add(move);
 
-                    (score, _) = get_best_move(board, isWhite, depth, max_depth, alpha, beta, move_seq);
+                    (score, _) = get_best_move(board, isWhite, depth, max_depth, alpha, beta, move_seq, millisecondsAllowedPerTurn, ref abort_search, timer);
                     // if we are only looking at checks and captures then we should evaluate the current position and
                     // compare it with the scores from checks and captures
                     if (checksAndCapturesOnly)
@@ -216,6 +207,12 @@ public class MyBot : IChessBot
                 evaluated_positions[board.ZobristKey] = new CacheEntry(depth, score);
             }
             board.UndoMove(move);
+
+            if (max_depth > 1 && millisecondsAllowedPerTurn < timer.MillisecondsElapsedThisTurn)
+            {
+                abort_search = true;
+                return (0, Move.NullMove); // doesn't mattter what we return
+            }
 
             if (ourMove)
             {
@@ -249,7 +246,6 @@ public class MyBot : IChessBot
             }
         }
 
-        print_move_scores();
         if (best_move_this_level != Move.NullMove)
         {
             return (best_score_this_level, best_move_this_level);
@@ -267,7 +263,7 @@ public class MyBot : IChessBot
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 500;
+        int millisecondsAllowedPerTurn = 400;
         int max_depth = 8;
 
 		Move best_move = Move.NullMove;
@@ -276,10 +272,17 @@ public class MyBot : IChessBot
         int beta = int.MaxValue;
 
         int depth = 1;
-        while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn / 2)
+        bool abort_search = false;
+
+        while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn)
         {
-            (best_score, best_move) = get_best_move(board, board.IsWhiteToMove, 0, depth, alpha, beta, move_seq);
-            System.Console.WriteLine($"Depth: {depth}, Best Move: {best_move}, Score: {best_score}, Time taken: {timer.MillisecondsElapsedThisTurn}ms, Evaluations: {evaluationCount}\n");
+            (int bs, Move bm) = get_best_move(board, board.IsWhiteToMove, 0, depth, alpha, beta, move_seq, millisecondsAllowedPerTurn, ref abort_search, timer);
+            if (!abort_search)
+            {
+                best_move = bm;
+                best_score = bs;
+            }
+            Console.WriteLine($"Depth: {depth}, Best Move: {best_move}, Score: {best_score}, Time taken: {timer.MillisecondsElapsedThisTurn}ms, Evaluations: {evaluationCount}\n");
             depth++;
         }
 
