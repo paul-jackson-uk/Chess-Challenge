@@ -163,7 +163,7 @@ public class MyBot : IChessBot
         List<move_score_t> move_scores = new();
         var print_move_scores = () =>
         {
-#if true
+#if false
             if (depth == 1)
             {
                 move_scores.Sort((m1, m2) => m1.score.CompareTo(m2.score));
@@ -180,18 +180,14 @@ public class MyBot : IChessBot
             foreach (Move move in sortedMoves)
             {
                 int score = 0;
-            if (depth == 2 && move_seq[0].StartSquare.Name == "e5" && move_seq[0].TargetSquare.Name == "g4")
-            {
-                Console.WriteLine("e3g4 at depth 2");
-            }
                 board.MakeMove(move);
 
                 // Have already evaluated this position?
-            if (evaluated_positions.TryGetValue(board.ZobristKey, out var cached_entry) && cached_entry.depth >= max_depth)
-            {
-                score = cached_entry.score;
-            }
-            else
+                if (evaluated_positions.TryGetValue(board.ZobristKey, out var cached_entry) && cached_entry.depth >= max_depth)
+                {
+                    score = cached_entry.score;
+                }
+                else
                 {
                     if (board.IsDraw())
                     {
@@ -218,42 +214,42 @@ public class MyBot : IChessBot
 
                 // Add the new position to the cache. Also replaces it if already present
                 evaluated_positions[board.ZobristKey] = new CacheEntry(depth, score);
-                }
-                board.UndoMove(move);
+            }
+            board.UndoMove(move);
 
             if (depth == 1) // top level
             {
                 move_scores.Add(new move_score_t(move, score));
             }
 
-                if (ourMove)
+            if (ourMove)
+            {
+                // our move
+                if (score > best_score_this_level)
                 {
-                    // our move
-                    if (score > best_score_this_level)
+                    best_score_this_level = score;
+                    best_move_this_level = move;
+                    alpha = Math.Max(alpha, score);
+                    if (beta <= alpha)
                     {
-                        best_score_this_level = score;
-                        best_move_this_level = move;
-                        alpha = Math.Max(alpha, score);
-                        if (beta <= alpha)
-                        {
                         print_move_scores();
-                            return (best_score_this_level, best_move_this_level);
-                        }
+                        return (best_score_this_level, best_move_this_level);
                     }
                 }
-                else
+            }
+            else
+            {
+                // opponent's move
+                if (score < best_score_this_level)
                 {
-                    // opponent's move
-                    if (score < best_score_this_level)
+                    best_score_this_level = score;
+                    best_move_this_level = move;
+                    beta = Math.Min(beta, score);
+                    if (beta <= alpha)
                     {
-                        best_score_this_level = score;
-                        best_move_this_level = move;
-                        beta = Math.Min(beta, score);
-                        if (beta <= alpha)
-                        {
-                            // Alpha cut-off
+                        // Alpha cut-off
                         print_move_scores();
-                            return (best_score_this_level, best_move_this_level);
+                        return (best_score_this_level, best_move_this_level);
                     }
 
                 }
@@ -278,7 +274,7 @@ public class MyBot : IChessBot
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 700;
+        int millisecondsAllowedPerTurn = 500;
         int max_depth = 8;
 
 		Move best_move = Move.NullMove;
