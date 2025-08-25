@@ -10,8 +10,11 @@ public class MyBot : IChessBot
 {
     private const int checkmateScore = 1000000;
     public static int evaluationCount = 0;
-    //private Dictionary<ulong,int> evaluated_positions = new Dictionary<ulong, int>();
+    private List<Move>  move_seq = new();
+    private Dictionary<ulong,CacheEntry> evaluated_positions = new();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
+
+    record CacheEntry(int depth, int score);
 
     private int GetEdgeDistance(int squareIndex)
     {
@@ -93,15 +96,20 @@ public class MyBot : IChessBot
             }
         }
 
+        // Boost for having more legal moves
+        int legal_moves_boost = 10 - board.GetLegalMoves().Length;
+        if (board.IsWhiteToMove == isWhite) legal_moves_boost = -legal_moves_boost;
+        score += legal_moves_boost;
+
         return score;
     }
 
-    IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
+	static IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
         Move[] moves = board.GetLegalMoves();
-        List<Move> checkMoves = new List<Move>();
-        List<Move> captureMoves = new List<Move>();
-        List<Move> normalMoves = new List<Move>();
+        List<Move> checkMoves = new();
+        List<Move> captureMoves = new();
+        List<Move> normalMoves = new();
 
         foreach (Move move in moves)
         {
@@ -129,48 +137,61 @@ public class MyBot : IChessBot
         }
 
         // Provide the capture moves first
-        foreach (Move move in captureMoves)
-        {
-            yield return move;
-        }
+        foreach (Move move in captureMoves) yield return move;
 
         // Then the check moves
-        foreach (Move move in checkMoves)
-        {
-            yield return move;
-        }
+        foreach (Move move in checkMoves) yield return move;
 
         // Finally the normal moves
-        foreach (Move move in normalMoves)
-        {
-            yield return move;
+        foreach (Move move in normalMoves) yield return move;
         }
-    }
-    
 
-    private (int, Move) get_best_move(Board board, bool isWhite, int depth, int alpha, int beta)
+    class move_score_t
+    {
+        public Move move;
+        public int score;
+
+        public move_score_t(Move m, int s) { move = m; score = s; }
+        override public string ToString() { return $"{move} score {score}::"; }
+    }
+
+    private (int, Move) get_best_move(Board board, bool isWhite, int depth, int max_depth, int alpha, int beta, List<Move> move_seq)
     {
         Move best_move_this_level = Move.NullMove;
         bool ourMove = isWhite == board.IsWhiteToMove;
         int best_score_this_level = ourMove ? int.MinValue : int.MaxValue;
-
-        if (--depth > -10)
+        List<move_score_t> move_scores = new();
+        var print_move_scores = () =>
         {
-            var sortedMoves = GetSortedMoves(board, depth < 0);
+#if true
+            if (depth == 1)
+            {
+                move_scores.Sort((m1, m2) => m1.score.CompareTo(m2.score));
+                System.Console.WriteLine($"Move scores {String.Join(", ", move_scores)}");
+            }
+#endif
+        };
+
+        depth++;
+        bool checksAndCapturesOnly = depth > max_depth;
+        var sortedMoves = GetSortedMoves(board, checksAndCapturesOnly);
 
             // Now start the analysis
             foreach (Move move in sortedMoves)
             {
                 int score = 0;
+            if (depth == 2 && move_seq[0].StartSquare.Name == "e5" && move_seq[0].TargetSquare.Name == "g4")
+            {
+                Console.WriteLine("e3g4 at depth 2");
+            }
                 board.MakeMove(move);
 
                 // Have already evaluated this position?
-                //if (evaluated_positions.TryGetValue(board.ZobristKey, out int cached_score))
-                //{
-                //    score = cached_score;
-                //    evaluated_positions.TryAdd(board.ZobristKey, score);
-                //}
-                //else
+            if (evaluated_positions.TryGetValue(board.ZobristKey, out var cached_entry) && cached_entry.depth >= max_depth)
+            {
+                score = cached_entry.score;
+            }
+            else
                 {
                     if (board.IsDraw())
                     {
@@ -182,11 +203,28 @@ public class MyBot : IChessBot
                     }
                     else
                     {
-                        (score, _) = get_best_move(board, isWhite, depth, alpha, beta);
+                    move_seq.Add(move);
+
+                    (score, _) = get_best_move(board, isWhite, depth, max_depth, alpha, beta, move_seq);
+                    // if we are only looking at checks and captures then we should evaluate the current position and
+                    // compare it with the scores from checks and captures
+                    if (checksAndCapturesOnly)
+                    {
+                        int evalScore = Evaluate(board, isWhite);
+                        score = ourMove ? Math.Max(score, evalScore) : Math.Min(score, evalScore);
                     }
-                  //  evaluated_positions.TryAdd(board.ZobristKey, score);
+                    move_seq.RemoveAt(move_seq.Count() - 1);
+                }
+
+                // Add the new position to the cache. Also replaces it if already present
+                evaluated_positions[board.ZobristKey] = new CacheEntry(depth, score);
                 }
                 board.UndoMove(move);
+
+            if (depth == 1) // top level
+            {
+                move_scores.Add(new move_score_t(move, score));
+            }
 
                 if (ourMove)
                 {
@@ -198,7 +236,7 @@ public class MyBot : IChessBot
                         alpha = Math.Max(alpha, score);
                         if (beta <= alpha)
                         {
-                            // Beta cut-off
+                        print_move_scores();
                             return (best_score_this_level, best_move_this_level);
                         }
                     }
@@ -214,13 +252,15 @@ public class MyBot : IChessBot
                         if (beta <= alpha)
                         {
                             // Alpha cut-off
+                        print_move_scores();
                             return (best_score_this_level, best_move_this_level);
-                        }
                     }
+
                 }
             }
         }
 
+        print_move_scores();
         if (best_move_this_level != Move.NullMove)
         {
             return (best_score_this_level, best_move_this_level);
@@ -234,24 +274,25 @@ public class MyBot : IChessBot
 
     public Move Think(Board board, Timer timer)
     {
+        System.Console.WriteLine($"Thinking... FEN: {board.GetFenString()}");
         evaluationCount = 0;
-        //evaluated_positions.Clear();
+        evaluated_positions.Clear();
 
-        int depth = 2;
+        int millisecondsAllowedPerTurn = 700;
+        int max_depth = 8;
 
-		depth = BitboardHelper.GetNumberOfSetBits(board.AllPiecesBitboard) switch
-		{
-			< 6 => 10,
-			< 8 => 8,
-			< 14 => 5,
-			< 18 => 3,
-			_ => 2,
-		};
 		Move best_move = Move.NullMove;
         int best_score = 0;
         int alpha = int.MinValue;
         int beta = int.MaxValue;
-        (best_score, best_move) = get_best_move(board, board.IsWhiteToMove, depth, alpha, beta);
+
+        int depth = 1;
+        while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn / 2)
+        {
+            (best_score, best_move) = get_best_move(board, board.IsWhiteToMove, 0, depth, alpha, beta, move_seq);
+            System.Console.WriteLine($"Depth: {depth}, Best Move: {best_move}, Score: {best_score}, Time taken: {timer.MillisecondsElapsedThisTurn}ms, Evaluations: {evaluationCount}\n");
+            depth++;
+        }
 
         return best_move;
     }
