@@ -44,7 +44,7 @@ public class MyBot : IChessBot
             opponentAttackingPieceCount += pl.Count * pieceValues[(int)pl.TypeOfPieceInList];
         }
 
-        isEndGame = opponentAttackingPieceCount < 700;
+        isEndGame = opponentAttackingPieceCount < 900;
         
         // Simple evaluation function: count material balance
         int score = 0;
@@ -178,7 +178,7 @@ public class MyBot : IChessBot
                     }
                     else if (board.IsInCheckmate())
                     {
-                        score = ourMove ? -checkmateScore : checkmateScore;
+                        score = ourMove ? checkmateScore : -checkmateScore;
                     }
                     else
                     {
