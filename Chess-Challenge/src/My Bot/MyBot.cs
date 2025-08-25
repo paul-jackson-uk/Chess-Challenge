@@ -176,29 +176,29 @@ public class MyBot : IChessBot
         bool checksAndCapturesOnly = depth > max_depth;
         var sortedMoves = GetSortedMoves(board, checksAndCapturesOnly);
 
-            // Now start the analysis
-            foreach (Move move in sortedMoves)
-            {
-                int score = 0;
-                board.MakeMove(move);
+        // Now start the analysis
+        foreach (Move move in sortedMoves)
+        {
+            int score = 0;
+            board.MakeMove(move);
 
-                // Have already evaluated this position?
-                if (evaluated_positions.TryGetValue(board.ZobristKey, out var cached_entry) && cached_entry.depth >= max_depth)
+            // Have already evaluated this position?
+            if (evaluated_positions.TryGetValue(board.ZobristKey, out var cached_entry) && cached_entry.depth >= max_depth)
+            {
+                score = cached_entry.score;
+            }
+            else
+            {
+                if (board.IsDraw())
                 {
-                    score = cached_entry.score;
+                    score = 0;
+                }
+                else if (board.IsInCheckmate())
+                {
+                    score = ourMove ? checkmateScore : -checkmateScore;
                 }
                 else
                 {
-                    if (board.IsDraw())
-                    {
-                        score = 0;
-                    }
-                    else if (board.IsInCheckmate())
-                    {
-                        score = ourMove ? checkmateScore : -checkmateScore;
-                    }
-                    else
-                    {
                     move_seq.Add(move);
 
                     (score, _) = get_best_move(board, isWhite, depth, max_depth, alpha, beta, move_seq);
@@ -217,11 +217,6 @@ public class MyBot : IChessBot
             }
             board.UndoMove(move);
 
-            if (depth == 1) // top level
-            {
-                move_scores.Add(new move_score_t(move, score));
-            }
-
             if (ourMove)
             {
                 // our move
@@ -232,7 +227,6 @@ public class MyBot : IChessBot
                     alpha = Math.Max(alpha, score);
                     if (beta <= alpha)
                     {
-                        print_move_scores();
                         return (best_score_this_level, best_move_this_level);
                     }
                 }
@@ -248,7 +242,6 @@ public class MyBot : IChessBot
                     if (beta <= alpha)
                     {
                         // Alpha cut-off
-                        print_move_scores();
                         return (best_score_this_level, best_move_this_level);
                     }
 
