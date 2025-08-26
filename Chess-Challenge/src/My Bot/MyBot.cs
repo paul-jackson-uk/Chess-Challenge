@@ -146,77 +146,73 @@ public class MyBot : IChessBot
         foreach (Move move in normalMoves) yield return move;
         }
 
-    class move_score_t
+    record move_score_t(Move move, int score)
     {
-        public Move move;
-        public int score;
-
-        public move_score_t(Move m, int s) { move = m; score = s; }
         override public string ToString() { return $"{move} score {score}::"; }
     }
 
 
-    private (int, Move) get_best_move(Board board, bool isWhite, int depth, int max_depth, int alpha, int beta, List<Move> move_seq, int millisecondsAllowedPerTurn, ref bool abort_search, Timer timer)
+    record SearchParams(Board board, bool isWhite, int max_depth, List<Move> move_seq, int millisecondsAllowedPerTurn, Timer timer, bool abort_search)
+    {
+        public bool abort_search { get; set; } = abort_search;
+    }
+    
+    private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta)
     {
         Move best_move_this_level = Move.NullMove;
-        bool ourMove = isWhite == board.IsWhiteToMove;
+        bool ourMove = p.isWhite == p.board.IsWhiteToMove;
         int best_score_this_level = ourMove ? int.MinValue : int.MaxValue;
         List<move_score_t> move_scores = new();
 
         depth++;
-        bool checksAndCapturesOnly = depth > max_depth;
-        var sortedMoves = GetSortedMoves(board, checksAndCapturesOnly);
+        bool checksAndCapturesOnly = depth > p.max_depth;
+        var sortedMoves = GetSortedMoves(p.board, checksAndCapturesOnly);
 
-        // Now start the analysis
         foreach (Move move in sortedMoves)
         {
             int score = 0;
-            board.MakeMove(move);
+            p.board.MakeMove(move);
 
-            // Have already evaluated this position?
-            if (evaluated_positions.TryGetValue(board.ZobristKey, out var cached_entry) && cached_entry.depth >= max_depth)
+            if (evaluated_positions.TryGetValue(p.board.ZobristKey, out var cached_entry) && cached_entry.depth >= p.max_depth)
             {
                 score = cached_entry.score;
             }
             else
             {
-                if (board.IsDraw())
+                if (p.board.IsDraw())
                 {
                     score = 0;
                 }
-                else if (board.IsInCheckmate())
+                else if (p.board.IsInCheckmate())
                 {
                     score = ourMove ? checkmateScore : -checkmateScore;
                 }
                 else
                 {
-                    move_seq.Add(move);
+                    p.move_seq.Add(move);
 
-                    (score, _) = get_best_move(board, isWhite, depth, max_depth, alpha, beta, move_seq, millisecondsAllowedPerTurn, ref abort_search, timer);
-                    // if we are only looking at checks and captures then we should evaluate the current position and
-                    // compare it with the scores from checks and captures
+                    (score, _) = get_best_move(p, depth, alpha, beta);
+
                     if (checksAndCapturesOnly)
                     {
-                        int evalScore = Evaluate(board, isWhite);
+                        int evalScore = Evaluate(p.board, p.isWhite);
                         score = ourMove ? Math.Max(score, evalScore) : Math.Min(score, evalScore);
                     }
-                    move_seq.RemoveAt(move_seq.Count() - 1);
+                    p.move_seq.RemoveAt(p.move_seq.Count() - 1);
                 }
 
-                // Add the new position to the cache. Also replaces it if already present
-                evaluated_positions[board.ZobristKey] = new CacheEntry(depth, score);
+                evaluated_positions[p.board.ZobristKey] = new CacheEntry(depth, score);
             }
-            board.UndoMove(move);
+            p.board.UndoMove(move);
 
-            if (max_depth > 1 && millisecondsAllowedPerTurn < timer.MillisecondsElapsedThisTurn)
+            if (p.max_depth > 1 && p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn)
             {
-                abort_search = true;
-                return (0, Move.NullMove); // doesn't mattter what we return
+                p.abort_search = true;
+                return (0, Move.NullMove);
             }
 
             if (ourMove)
             {
-                // our move
                 if (score > best_score_this_level)
                 {
                     best_score_this_level = score;
@@ -230,7 +226,6 @@ public class MyBot : IChessBot
             }
             else
             {
-                // opponent's move
                 if (score < best_score_this_level)
                 {
                     best_score_this_level = score;
@@ -238,10 +233,8 @@ public class MyBot : IChessBot
                     beta = Math.Min(beta, score);
                     if (beta <= alpha)
                     {
-                        // Alpha cut-off
                         return (best_score_this_level, best_move_this_level);
                     }
-
                 }
             }
         }
@@ -253,7 +246,7 @@ public class MyBot : IChessBot
         else
         {
             // We must have looked at no moves because we are at max depth and there are no captures or checks
-            return (Evaluate(board, isWhite), Move.NullMove);
+            return (Evaluate(p.board, p.isWhite), Move.NullMove);
         }
     }
 
@@ -276,8 +269,10 @@ public class MyBot : IChessBot
 
         while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn)
         {
-            (int bs, Move bm) = get_best_move(board, board.IsWhiteToMove, 0, depth, alpha, beta, move_seq, millisecondsAllowedPerTurn, ref abort_search, timer);
-            if (!abort_search)
+            var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, move_seq, millisecondsAllowedPerTurn, timer, abort_search);
+
+            (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta);
+            if (!searchParams.abort_search)
             {
                 best_move = bm;
                 best_score = bs;
