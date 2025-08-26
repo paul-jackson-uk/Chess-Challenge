@@ -120,13 +120,13 @@ public class MyBot : IChessBot
                 yield return move; // If this move results in checkmate, return it immediately
                 yield break;
             }
-            else if (board.IsInCheck())
-            {
-                checkMoves.Add(move);
-            }
             else if (move.IsCapture)
             {
                 captureMoves.Add(move);
+            }
+            else if (board.IsInCheck())
+            {
+                checkMoves.Add(move);
             }
             else if (!checksAndCapturesOnly)
             {
