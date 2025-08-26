@@ -10,7 +10,6 @@ public class MyBot : IChessBot
 {
     private const int checkmateScore = 1000000;
     public static int evaluationCount = 0;
-    private List<Move>  move_seq = new();
     private Dictionary<ulong,CacheEntry> evaluated_positions = new();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
 
@@ -62,16 +61,16 @@ public class MyBot : IChessBot
                 {
                     case PieceType.Pawn:
                         value = pieceValues[(int)PieceType.Pawn];
+                        value += 20 * (GetEdgeDistance(pl.GetPiece(i).Square.Index) - 1);
                         break;
                     case PieceType.Knight:
                         // Add positional score for pieces
                         value = pieceValues[(int)PieceType.Knight] + 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
                         break;
                     case PieceType.Bishop:
-                        value = pieceValues[(int)PieceType.Bishop] + GetEdgeDistance(pl.GetPiece(i).Square.Index);
-                        break;
                     case PieceType.Rook:
-                        value = pieceValues[(int)PieceType.Rook];
+                        value = pieceValues[(int)pl.TypeOfPieceInList];
+                        value += (4 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, pl.GetPiece(i).Square, board)));
                         break;
                     case PieceType.Queen:
                         value = pieceValues[(int)PieceType.Queen];
@@ -79,6 +78,10 @@ public class MyBot : IChessBot
                         {
                             // In endgame, we want the queen to be more active
                             value += 20 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                        }
+                        else if (board.PlyCount < 10)
+                        {
+                            value += 20 * (3 - pl.GetPiece(i).Square.Rank);
                         }
                         break;
                     case PieceType.King:
@@ -108,6 +111,7 @@ public class MyBot : IChessBot
     {
         Move[] moves = board.GetLegalMoves();
         List<Move> checkMoves = new();
+        
         List<Move> captureMoves = new();
         List<Move> normalMoves = new();
 
@@ -152,7 +156,7 @@ public class MyBot : IChessBot
     }
 
 
-    record SearchParams(Board board, bool isWhite, int max_depth, List<Move> move_seq, int millisecondsAllowedPerTurn, Timer timer, bool abort_search)
+    record SearchParams(Board board, bool isWhite, int max_depth, int millisecondsAllowedPerTurn, Timer timer, bool abort_search)
     {
         public bool abort_search { get; set; } = abort_search;
     }
@@ -189,8 +193,6 @@ public class MyBot : IChessBot
                 }
                 else
                 {
-                    p.move_seq.Add(move);
-
                     (score, _) = get_best_move(p, depth, alpha, beta);
 
                     if (checksAndCapturesOnly)
@@ -198,7 +200,6 @@ public class MyBot : IChessBot
                         int evalScore = Evaluate(p.board, p.isWhite);
                         score = ourMove ? Math.Max(score, evalScore) : Math.Min(score, evalScore);
                     }
-                    p.move_seq.RemoveAt(p.move_seq.Count() - 1);
                 }
 
                 evaluated_positions[p.board.ZobristKey] = new CacheEntry(depth, score);
@@ -269,7 +270,7 @@ public class MyBot : IChessBot
 
         while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn)
         {
-            var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, move_seq, millisecondsAllowedPerTurn, timer, abort_search);
+            var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, millisecondsAllowedPerTurn, timer, abort_search);
 
             (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta);
             if (!searchParams.abort_search)
