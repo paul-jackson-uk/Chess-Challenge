@@ -107,11 +107,11 @@ public class MyBot : IChessBot
         return score;
     }
 
-	static IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
+	IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
         Move[] moves = board.GetLegalMoves();
         List<Move> checkMoves = new();
-        
+        List<Move> bestCaptures = new();
         List<Move> captureMoves = new();
         List<Move> normalMoves = new();
 
@@ -126,7 +126,14 @@ public class MyBot : IChessBot
             }
             else if (move.IsCapture)
             {
-                captureMoves.Add(move);
+                if (pieceValues[(int)move.MovePieceType] < pieceValues[(int)move.CapturePieceType])
+                {
+                    bestCaptures.Add(move);
+                }
+                else
+                {
+                    captureMoves.Add(move);
+                }
             }
             else if (board.IsInCheck())
             {
@@ -140,7 +147,10 @@ public class MyBot : IChessBot
             board.UndoMove(move);
         }
 
-        // Provide the capture moves first
+        // Provide the best capture moves first
+        foreach (Move move in bestCaptures) yield return move;
+
+        // Then the normal capture moves
         foreach (Move move in captureMoves) yield return move;
 
         // Then the check moves
