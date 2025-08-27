@@ -6,11 +6,14 @@ using ChessChallenge.API;
 using System.Collections;
 using System;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Diagnostics;
+
+
 public class MyBot : IChessBot
 {
     private const int checkmateScore = 1000000;
     public static int evaluationCount = 0;
-    private Dictionary<ulong,CacheEntry> evaluated_positions = new();
+    private Dictionary<ulong, CacheEntry> evaluated_positions = new();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
 
     record CacheEntry(int depth, int score);
@@ -32,65 +35,64 @@ public class MyBot : IChessBot
 
         PieceList[] pieceLists = board.GetAllPieceLists();
 
-        // Get opponent attacking peice count
         int opponentAttackingPieceCount = 0;
-        IEnumerable<PieceList> opponentPieceQuery =
-            from piece_list in pieceLists
-            where piece_list.IsWhitePieceList != isWhite
-            where pieceValues[(int) piece_list.TypeOfPieceInList] > 250
-            where pieceValues[(int) piece_list.TypeOfPieceInList] < 1000
-            select piece_list;
+        ulong oppAttackingPieceBB = (isWhite ? board.BlackPiecesBitboard : board.WhitePiecesBitboard) &
+                    ~(board.GetPieceBitboard(PieceType.King, !isWhite) | board.GetPieceBitboard(PieceType.Pawn, !isWhite));
+        opponentAttackingPieceCount = BitboardHelper.GetNumberOfSetBits(oppAttackingPieceBB);
+        isEndGame = (opponentAttackingPieceCount < 4) && board.GetPieceList(PieceType.Queen, !isWhite).Count > 0;
 
-        foreach (PieceList pl in opponentPieceQuery)
-        {
-            opponentAttackingPieceCount += pl.Count * pieceValues[(int)pl.TypeOfPieceInList];
-        }
-
-        isEndGame = opponentAttackingPieceCount < 900;
-        
         // Simple evaluation function: count material balance
         int score = 0;
         foreach (PieceList pl in pieceLists)
         {
             // add up material value of pieces
-            int value = 0; 
+            int value = 0;
             for (int i = 0; i < pl.Count; i++)
             {
+                // Add material value
+                if (pl.TypeOfPieceInList is not PieceType.King) value = pieceValues[(int)pl.TypeOfPieceInList];
+
                 // Add positional score for pieces
                 switch (pl.TypeOfPieceInList)
                 {
                     case PieceType.Pawn:
-                        value = pieceValues[(int)PieceType.Pawn];
                         value += 20 * (GetEdgeDistance(pl.GetPiece(i).Square.Index) - 1);
                         break;
                     case PieceType.Knight:
                         // Add positional score for pieces
-                        value = pieceValues[(int)PieceType.Knight] + 8 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
-                        break;
+                        value += 8 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetKnightAttacks(pl.GetPiece(i).Square));
+                break;
                     case PieceType.Bishop:
-                    case PieceType.Rook:
-                        value = pieceValues[(int)pl.TypeOfPieceInList];
-                        value += (4 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, pl.GetPiece(i).Square, board)));
-                        break;
-                    case PieceType.Queen:
-                        value = pieceValues[(int)PieceType.Queen];
-                        if (isEndGame)
-                        {
-                            // In endgame, we want the queen to be more active
-                            value += 20 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
-                        }
-                        else if (board.PlyCount < 10)
-                        {
-                            value += 20 * (3 - pl.GetPiece(i).Square.Rank);
-                        }
-                        break;
-                    case PieceType.King:
-                        if (isEndGame)
-                        {
-                            // In endgame, we want the king to be more active
-                            value += 30 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
-                        }
-                        break;
+                case PieceType.Rook:
+                    value += (4 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, pl.GetPiece(i).Square, board)));
+                    break;
+                case PieceType.Queen:
+                    if (isEndGame)
+                    {
+                        // In endgame, we want the queen to be more active
+                        value += 20 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                    }
+                    else if (board.PlyCount < 10)
+                    {
+                        var queenRank = pl.GetPiece(i).Square.Rank;
+                        if (!board.IsWhiteToMove) queenRank = 7 - queenRank;
+                        value += 20 * (3 - queenRank);
+                    }
+                    break;
+                case PieceType.King:
+                    if (isEndGame)
+                    {
+                        // In endgame, we want the king to be more active
+                        value += 30 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
+                    }
+                    else
+                    {
+                        // Keep the king on the back rank ideally towards the corner
+                        var kingSquare = board.GetKingSquare(board.IsWhiteToMove);
+                        int kingRank = board.IsWhiteToMove ? kingSquare.Rank : 7 - kingSquare.Rank;
+                        value += ((7 - kingRank) * 10) + (Math.Max(kingSquare.File, (7 - kingSquare.File)) << 3);
+                    }
+                    break;
                 }
 
                 // Add or subtract piece value based on colour
@@ -107,7 +109,7 @@ public class MyBot : IChessBot
         return score;
     }
 
-	IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
+    IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
         Move[] moves = board.GetLegalMoves();
         List<Move> checkMoves = new();
@@ -143,7 +145,7 @@ public class MyBot : IChessBot
             {
                 normalMoves.Add(move);
             }
- 
+
             board.UndoMove(move);
         }
 
@@ -158,7 +160,7 @@ public class MyBot : IChessBot
 
         // Finally the normal moves
         foreach (Move move in normalMoves) yield return move;
-        }
+    }
 
     record move_score_t(Move move, int score)
     {
@@ -170,7 +172,7 @@ public class MyBot : IChessBot
     {
         public bool abort_search { get; set; } = abort_search;
     }
-    
+
     private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta)
     {
         Move best_move_this_level = Move.NullMove;
@@ -267,10 +269,10 @@ public class MyBot : IChessBot
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 400;
+        int millisecondsAllowedPerTurn = 600;
         int max_depth = 8;
 
-		Move best_move = Move.NullMove;
+        Move best_move = Move.NullMove;
         int best_score = 0;
         int alpha = int.MinValue;
         int beta = int.MaxValue;
@@ -295,3 +297,4 @@ public class MyBot : IChessBot
         return best_move;
     }
 }
+
