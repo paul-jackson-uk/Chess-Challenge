@@ -7,6 +7,7 @@ using System.Collections;
 using System;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Diagnostics;
+using Microsoft.CodeAnalysis;
 
 
 public class MyBot : IChessBot
@@ -109,12 +110,14 @@ public class MyBot : IChessBot
         return score;
     }
 
+
     IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
         Move[] moves = board.GetLegalMoves();
         List<Move> checkMoves = new();
         List<Move> bestCaptures = new();
-        List<Move> captureMoves = new();
+        List<Move> equalCaptureMoves = new();
+        List<Move> weakCaptureMoves = new();
         List<Move> normalMoves = new();
 
         foreach (Move move in moves)
@@ -132,9 +135,13 @@ public class MyBot : IChessBot
                 {
                     bestCaptures.Add(move);
                 }
+                else if (pieceValues[(int)move.MovePieceType] == pieceValues[(int)move.CapturePieceType])
+                {
+                    equalCaptureMoves.Add(move);
+                }
                 else
                 {
-                    captureMoves.Add(move);
+                    weakCaptureMoves.Add(move);
                 }
             }
             else if (board.IsInCheck())
@@ -152,11 +159,14 @@ public class MyBot : IChessBot
         // Provide the best capture moves first
         foreach (Move move in bestCaptures) yield return move;
 
-        // Then the normal capture moves
-        foreach (Move move in captureMoves) yield return move;
+        // Then the equal capture moves
+        foreach (Move move in equalCaptureMoves) yield return move;
 
         // Then the check moves
         foreach (Move move in checkMoves) yield return move;
+
+        // Then the weak capture moves
+        foreach (Move move in weakCaptureMoves) yield return move;
 
         // Finally the normal moves
         foreach (Move move in normalMoves) yield return move;
