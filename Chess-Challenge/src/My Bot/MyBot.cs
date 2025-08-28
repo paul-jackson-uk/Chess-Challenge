@@ -131,18 +131,16 @@ public class MyBot : IChessBot
             }
             else if (move.IsCapture)
             {
-                if (pieceValues[(int)move.MovePieceType] < pieceValues[(int)move.CapturePieceType])
+                int pieceVal = pieceValues[(int)move.MovePieceType];
+                int targetVal = pieceValues[(int)move.CapturePieceType];
+                var capList = (pieceVal, targetVal) switch
                 {
-                    bestCaptures.Add(move);
-                }
-                else if (pieceValues[(int)move.MovePieceType] == pieceValues[(int)move.CapturePieceType])
-                {
-                    equalCaptureMoves.Add(move);
-                }
-                else
-                {
-                    weakCaptureMoves.Add(move);
-                }
+                    _ when (pieceVal < targetVal) => bestCaptures,
+                    _ when (pieceVal == targetVal) => equalCaptureMoves,
+                    _  => weakCaptureMoves,
+                };
+
+                capList.Add(move);
             }
             else if (board.IsInCheck())
             {
