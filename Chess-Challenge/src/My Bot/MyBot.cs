@@ -178,12 +178,24 @@ public class MyBot : IChessBot
     }
 
 
+    public class MoveNode
+   {
+        public int? evaluation = null;
+        public Dictionary<Move,MoveNode> children = new();
+
+    }
+
+    public static MoveNode CreateMoveNode()
+    {
+		return new MoveNode();
+    }
+
     record SearchParams(Board board, bool isWhite, int max_depth, int millisecondsAllowedPerTurn, Timer timer, bool abort_search)
     {
         public bool abort_search { get; set; } = abort_search;
     }
 
-    private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta)
+    private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta, MoveNode subtree)
     {
         Move best_move_this_level = Move.NullMove;
         bool ourMove = p.isWhite == p.board.IsWhiteToMove;
@@ -196,6 +208,7 @@ public class MyBot : IChessBot
 
         foreach (Move move in sortedMoves)
         {
+            var node = CreateMoveNode();
             int score = 0;
             p.board.MakeMove(move);
 
@@ -215,7 +228,7 @@ public class MyBot : IChessBot
                 }
                 else
                 {
-                    (score, _) = get_best_move(p, depth, alpha, beta);
+                    (score, _) = get_best_move(p, depth, alpha, beta, node);
 
                     if (checksAndCapturesOnly)
                     {
@@ -233,6 +246,9 @@ public class MyBot : IChessBot
                 p.abort_search = true;
                 return (0, Move.NullMove);
             }
+
+            node.evaluation = score;
+            subtree.children[move] = node;
 
             if (ourMove)
             {
@@ -290,11 +306,12 @@ public class MyBot : IChessBot
         int depth = 1;
         bool abort_search = false;
 
+        var searchTree = CreateMoveNode();
         while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn)
         {
             var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, millisecondsAllowedPerTurn, timer, abort_search);
 
-            (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta);
+            (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta, searchTree);
             if (!searchParams.abort_search)
             {
                 best_move = bm;
