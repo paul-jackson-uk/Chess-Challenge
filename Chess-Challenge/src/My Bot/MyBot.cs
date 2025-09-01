@@ -91,7 +91,7 @@ public class MyBot : IChessBot
                         // Keep the king on the back rank ideally towards the corner
                         var kingSquare = board.GetKingSquare(board.IsWhiteToMove);
                         int kingRank = board.IsWhiteToMove ? kingSquare.Rank : 7 - kingSquare.Rank;
-                        value += ((7 - kingRank) * 10) + (Math.Max(kingSquare.File, (7 - kingSquare.File)) << 3);
+                        value += ((7 - kingRank) * 10) + (Math.Min(kingSquare.File, (7 - kingSquare.File)) << 3);
                     }
                     break;
                 }
@@ -203,7 +203,9 @@ public class MyBot : IChessBot
         List<move_score_t> move_scores = new();
 
         depth++;
-        bool checksAndCapturesOnly = depth > p.max_depth;
+        // if the position is currently in-check we should consider all legal moves as the following move might be
+        // a capture from a fork say. 
+        bool checksAndCapturesOnly = depth > p.max_depth && !p.board.IsInCheck();
         var sortedMoves = GetSortedMoves(p.board, checksAndCapturesOnly);
 
         foreach (Move move in sortedMoves)
