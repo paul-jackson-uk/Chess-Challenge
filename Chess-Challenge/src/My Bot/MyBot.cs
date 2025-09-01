@@ -13,6 +13,7 @@ using Microsoft.CodeAnalysis;
 public class MyBot : IChessBot
 {
     private const int checkmateScore = 1000000;
+    private const uint MaxMovesSinceCapture = 2;
     public static int evaluationCount = 0;
     private Dictionary<ulong, CacheEntry> evaluated_positions = new();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
@@ -195,7 +196,7 @@ public class MyBot : IChessBot
         public int max_depth { get; set; } = max_depth;
     }
 
-    private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta, MoveNode subtree)
+    private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta, MoveNode subtree, uint movesSinceCapture = 0)
     {
         Move best_move_this_level = Move.NullMove;
         bool ourMove = p.isWhite == p.board.IsWhiteToMove;
@@ -203,9 +204,17 @@ public class MyBot : IChessBot
         List<move_score_t> move_scores = new();
 
         depth++;
+        movesSinceCapture++;
         // if the position is currently in-check we should consider all legal moves as the following move might be
         // a capture from a fork say. 
         bool checksAndCapturesOnly = depth > p.max_depth && !p.board.IsInCheck();
+
+        // When we are in checksAndCapturesOnly search don't go very deep without a capture or it will go on forever potentially
+        if (checksAndCapturesOnly && movesSinceCapture > MaxMovesSinceCapture)
+        {
+            return (Evaluate(p.board, p.isWhite), Move.NullMove);
+        }
+
         var sortedMoves = GetSortedMoves(p.board, checksAndCapturesOnly);
 
         foreach (Move move in sortedMoves)
@@ -230,7 +239,7 @@ public class MyBot : IChessBot
                 }
                 else
                 {
-                    (score, _) = get_best_move(p, depth, alpha, beta, node);
+                    (score, _) = get_best_move(p, depth, alpha, beta, node, move.IsCapture ? 0 : movesSinceCapture);
                 }
 
                 evaluated_positions[p.board.ZobristKey] = new CacheEntry(depth, score);
