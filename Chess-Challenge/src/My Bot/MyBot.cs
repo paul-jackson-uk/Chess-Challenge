@@ -219,78 +219,30 @@ public class MyBot : IChessBot
 
         foreach (Move move in sortedMoves)
         {
-            var node = CreateMoveNode();
-            int score = 0;
-            p.board.MakeMove(move);
+            MoveNode node;
+            int score = TryMove(p, depth, alpha, beta, movesSinceCapture, ourMove, checksAndCapturesOnly, move, out node);
 
-            if (evaluated_positions.TryGetValue(p.board.ZobristKey, out var cached_entry) && cached_entry.depth >= p.max_depth)
-            {
-                score = cached_entry.score;
-            }
-            else
-            {
-                if (p.board.IsDraw())
-                {
-                    score = 0;
-                }
-                else if (p.board.IsInCheckmate())
-                {
-                    score = ourMove ? checkmateScore : -checkmateScore;
-                }
-                else
-                {
-                    (score, _) = get_best_move(p, depth, alpha, beta, node, move.IsCapture ? 0 : movesSinceCapture);
-                }
-
-                evaluated_positions[p.board.ZobristKey] = new CacheEntry(depth, score);
-            }
-            p.board.UndoMove(move);
-
-            if (checksAndCapturesOnly)
-            {
-                // The player doesn't have to make any of the captures or checks so we should
-                // also do an evaluation and see whether that is better for them
-                int evalScore = Evaluate(p.board, p.isWhite);
-                score = ourMove ? Math.Max(score, evalScore) : Math.Min(score, evalScore);
-            }
-
-            if (p.max_depth > 1 && p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn)
-            {
-                p.abort_search = true;
-                return (0, Move.NullMove);
-            }
+            // Have we run out of time?
+            p.abort_search = (p.max_depth > 1) && (p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn);
+            if (p.abort_search) return (0, Move.NullMove);
 
             node.evaluation = score;
             subtree.children[move] = node;
 
-            if (ourMove)
+            // Have we found the best move
+            bool new_best = ourMove ? (score > best_score_this_level) : (score < best_score_this_level);
+            if (new_best)
             {
-                if (score > best_score_this_level)
-                {
-                    best_score_this_level = score;
-                    best_move_this_level = move;
-                    alpha = Math.Max(alpha, score);
-                    if (beta <= alpha)
-                    {
-                        return (best_score_this_level, best_move_this_level);
-                    }
-                }
-            }
-            else
-            {
-                if (score < best_score_this_level)
-                {
-                    best_score_this_level = score;
-                    best_move_this_level = move;
-                    beta = Math.Min(beta, score);
-                    if (beta <= alpha)
-                    {
-                        return (best_score_this_level, best_move_this_level);
-                    }
-                }
+                best_score_this_level = score;
+                best_move_this_level = move;
+                if (ourMove) alpha = Math.Max(alpha, score); else beta = Math.Min(beta, score);
+
+                // Does this move warrant a prune?
+                if (beta <= alpha) return (best_score_this_level, best_move_this_level);
             }
         }
 
+        // Have we got a best move to return?
         if (best_move_this_level != Move.NullMove)
         {
             return (best_score_this_level, best_move_this_level);
@@ -302,13 +254,53 @@ public class MyBot : IChessBot
         }
     }
 
-    public Move Think(Board board, Timer timer)
+    private int TryMove(SearchParams p, int depth, int alpha, int beta, uint movesSinceCapture, bool ourMove, bool checksAndCapturesOnly, Move move, out MoveNode node)
+    {
+        node = CreateMoveNode();
+        int score = 0;
+        p.board.MakeMove(move);
+
+        if (evaluated_positions.TryGetValue(p.board.ZobristKey, out var cached_entry) && cached_entry.depth >= p.max_depth)
+        {
+            score = cached_entry.score;
+        }
+        else
+        {
+            if (p.board.IsDraw())
+            {
+                score = 0;
+            }
+            else if (p.board.IsInCheckmate())
+            {
+                score = ourMove ? checkmateScore : -checkmateScore;
+            }
+            else
+            {
+                (score, _) = get_best_move(p, depth, alpha, beta, node, move.IsCapture ? 0 : movesSinceCapture);
+            }
+
+            evaluated_positions[p.board.ZobristKey] = new CacheEntry(depth, score);
+        }
+        p.board.UndoMove(move);
+
+        if (checksAndCapturesOnly)
+        {
+            // The player doesn't have to make any of the captures or checks so we should
+            // also do an evaluation and see whether that is better for them
+            int evalScore = Evaluate(p.board, p.isWhite);
+            score = ourMove ? Math.Max(score, evalScore) : Math.Min(score, evalScore);
+        }
+
+        return score;
+	}
+
+	public Move Think(Board board, Timer timer)
     {
         System.Console.WriteLine($"Thinking... FEN: {board.GetFenString()}");
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 700;
+        int millisecondsAllowedPerTurn = 1000;
         int max_depth = 8;
 
         Move best_move = Move.NullMove;
