@@ -54,47 +54,53 @@ public class MyBot : IChessBot
                 // Add material value
                 if (pl.TypeOfPieceInList is not PieceType.King) value = pieceValues[(int)pl.TypeOfPieceInList];
 
+                var sq = pl.GetPiece(i).Square;
+
                 // Add positional score for pieces
                 switch (pl.TypeOfPieceInList)
                 {
                     case PieceType.Pawn:
-                        value += 20 * (GetEdgeDistance(pl.GetPiece(i).Square.Index) - 1);
+                        // encourage pawns in the centre
+                        value += 20 * (GetEdgeDistance(sq.Index) - 1);
+
+                        // Encourage pawn pushing in endgame
+                        if (isEndGame) value += (board.IsWhiteToMove ? sq.Rank : 7 - sq.Rank) << 4;
                         break;
                     case PieceType.Knight:
                         // Add positional score for pieces
                         value += 8 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetKnightAttacks(pl.GetPiece(i).Square));
-                break;
+                        break;
                     case PieceType.Bishop:
-                case PieceType.Rook:
-                    value += (4 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, pl.GetPiece(i).Square, board)));
-                    break;
-                case PieceType.Queen:
-                    if (isEndGame)
-                    {
-                        // In endgame, we want the queen to be more active
-                        value += 20 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
-                    }
-                    else if (board.PlyCount < 10)
-                    {
-                        var queenRank = pl.GetPiece(i).Square.Rank;
-                        if (!board.IsWhiteToMove) queenRank = 7 - queenRank;
-                        value += 20 * (3 - queenRank);
-                    }
-                    break;
-                case PieceType.King:
-                    if (isEndGame)
-                    {
-                        // In endgame, we want the king to be more active
-                        value += 30 * GetEdgeDistance(pl.GetPiece(i).Square.Index);
-                    }
-                    else
-                    {
-                        // Keep the king on the back rank ideally towards the corner
-                        var kingSquare = board.GetKingSquare(board.IsWhiteToMove);
-                        int kingRank = board.IsWhiteToMove ? kingSquare.Rank : 7 - kingSquare.Rank;
-                        value += ((7 - kingRank) * 10) + (Math.Min(kingSquare.File, (7 - kingSquare.File)) << 3);
-                    }
-                    break;
+                    case PieceType.Rook:
+                        value += (4 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, sq, board)));
+                        break;
+                    case PieceType.Queen:
+                        if (isEndGame)
+                        {
+                            // In endgame, we want the queen to be more active
+                            value += 20 * GetEdgeDistance(sq.Index);
+                        }
+                        else if (board.PlyCount < 10)
+                        {
+                            var queenRank = sq.Rank;
+                            if (!board.IsWhiteToMove) queenRank = 7 - queenRank;
+                            value += 20 * (3 - queenRank);
+                        }
+                        break;
+                    case PieceType.King:
+                        if (isEndGame)
+                        {
+                            // In endgame, we want the king to be more active
+                            value += 30 * GetEdgeDistance(sq.Index);
+                        }
+                        else
+                        {
+                            // Keep the king on the back rank ideally towards the corner
+                            var kingSquare = board.GetKingSquare(board.IsWhiteToMove);
+                            int kingRank = board.IsWhiteToMove ? kingSquare.Rank : 7 - kingSquare.Rank;
+                            value += ((7 - kingRank) * 10) + (Math.Min(kingSquare.File, (7 - kingSquare.File)) << 3);
+                        }
+                        break;
                 }
 
                 // Add or subtract piece value based on colour
@@ -103,11 +109,12 @@ public class MyBot : IChessBot
             }
         }
 
+#if false
         // Boost for having more legal moves
         int legal_moves_boost = 10 - board.GetLegalMoves().Length;
         if (board.IsWhiteToMove == isWhite) legal_moves_boost = -legal_moves_boost;
         score += legal_moves_boost;
-
+#endif
         return score;
     }
 
@@ -308,7 +315,7 @@ public class MyBot : IChessBot
         int alpha = int.MinValue;
         int beta = int.MaxValue;
 
-        int depth = 3;
+        int depth = 2;
         bool abort_search = false;
 
         var searchTree = CreateMoveNode();
