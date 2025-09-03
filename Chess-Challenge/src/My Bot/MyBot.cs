@@ -190,8 +190,9 @@ public class MyBot : IChessBot
 		return new MoveNode();
     }
 
-    record SearchParams(Board board, bool isWhite, int max_depth, int millisecondsAllowedPerTurn, Timer timer, bool abort_search)
+    record SearchParams(Board board, bool isWhite, int max_depth, int millisecondsAllowedPerTurn, Timer timer, bool abort_allowed, bool abort_search)
     {
+        public bool abort_allowed { get; set; } = abort_allowed;
         public bool abort_search { get; set; } = abort_search;
         public int max_depth { get; set; } = max_depth;
     }
@@ -201,7 +202,6 @@ public class MyBot : IChessBot
         Move best_move_this_level = Move.NullMove;
         bool ourMove = p.isWhite == p.board.IsWhiteToMove;
         int best_score_this_level = ourMove ? int.MinValue : int.MaxValue;
-        List<move_score_t> move_scores = new();
 
         depth++;
         movesSinceCapture++;
@@ -223,7 +223,7 @@ public class MyBot : IChessBot
             int score = TryMove(p, depth, alpha, beta, movesSinceCapture, ourMove, checksAndCapturesOnly, move, out node);
 
             // Have we run out of time?
-            p.abort_search = (p.max_depth > 1) && (p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn);
+            p.abort_search = (p.abort_allowed) && (p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn);
             if (p.abort_search) return (0, Move.NullMove);
 
             node.evaluation = score;
@@ -300,7 +300,7 @@ public class MyBot : IChessBot
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 1000;
+        int millisecondsAllowedPerTurn = 700;
         int max_depth = 8;
 
         Move best_move = Move.NullMove;
@@ -308,11 +308,11 @@ public class MyBot : IChessBot
         int alpha = int.MinValue;
         int beta = int.MaxValue;
 
-        int depth = 1;
+        int depth = 3;
         bool abort_search = false;
 
         var searchTree = CreateMoveNode();
-        var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, millisecondsAllowedPerTurn, timer, abort_search);
+        var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, millisecondsAllowedPerTurn, timer, false, abort_search);
         while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn)
         {
             (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta, searchTree);
@@ -324,6 +324,7 @@ public class MyBot : IChessBot
             Console.WriteLine($"Depth: {depth}, Best Move: {best_move}, Score: {best_score}, Time taken: {timer.MillisecondsElapsedThisTurn}ms, Evaluations: {evaluationCount}\n");
             depth++;
             searchParams.max_depth = depth;
+            searchParams.abort_allowed = true;
         }
 
         return best_move;
