@@ -49,6 +49,7 @@ public class MyBot : IChessBot
         {
             // add up material value of pieces
             int value = 0;
+            int pawnFiles = 0;
             for (int i = 0; i < pl.Count; i++)
             {
                 // Add material value
@@ -65,6 +66,11 @@ public class MyBot : IChessBot
 
                         // Encourage pawn pushing in endgame
                         if (isEndGame) value += (board.IsWhiteToMove ? sq.Rank : 7 - sq.Rank) << 4;
+
+                        // Look for doubled pawns
+                        int pawnFileMask = 1 << sq.File;
+                        if ((pawnFiles & pawnFileMask) != 0) value -= 40;
+                        pawnFiles |= pawnFileMask;
                         break;
                     case PieceType.Knight:
                         // Add positional score for pieces
