@@ -18,6 +18,10 @@ public class MyBot : IChessBot
     private Dictionary<ulong, CacheEntry> evaluated_positions = new();
     private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
 
+    private long totalTime = 0;
+    private long sortedMovesTime = 0;
+    private long evaluationTime = 0;
+
     record CacheEntry(int depth, int score);
 
     private int GetEdgeDistance(int squareIndex)
@@ -31,6 +35,7 @@ public class MyBot : IChessBot
     }
     private int Evaluate(Board board, bool isWhite)
     {
+        Stopwatch evalWatch = Stopwatch.StartNew();
         //System.Console.WriteLine("Evaluating position... FEN " + board.GetFenString());
         evaluationCount++;
         bool isEndGame = false;
@@ -121,18 +126,21 @@ public class MyBot : IChessBot
         if (board.IsWhiteToMove == isWhite) legal_moves_boost = -legal_moves_boost;
         score += legal_moves_boost;
 #endif
+        evalWatch.Stop();
+        evaluationTime += evalWatch.ElapsedTicks;
         return score;
     }
 
 
     IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
+        Stopwatch sortingWatch = Stopwatch.StartNew();
         Move[] moves = board.GetLegalMoves();
-        List<Move> checkMoves = new();
-        List<Move> bestCaptures = new();
-        List<Move> equalCaptureMoves = new();
-        List<Move> weakCaptureMoves = new();
-        List<Move> normalMoves = new();
+        List<Move> checkMoves = new(32);
+        List<Move> bestCaptures = new(16);
+        List<Move> equalCaptureMoves = new(16);
+        List<Move> weakCaptureMoves = new(16);
+        List<Move> normalMoves = new(32);
 
         foreach (Move move in moves)
         {
@@ -140,6 +148,8 @@ public class MyBot : IChessBot
             if (board.IsInCheckmate())
             {
                 board.UndoMove(move);
+                sortingWatch.Stop();
+                sortedMovesTime += sortingWatch.ElapsedTicks;
                 yield return move; // If this move results in checkmate, return it immediately
                 yield break;
             }
@@ -168,8 +178,13 @@ public class MyBot : IChessBot
             board.UndoMove(move);
         }
 
+        sortingWatch.Stop();
+        sortedMovesTime += sortingWatch.ElapsedTicks;
         // Provide the best capture moves first
-        foreach (Move move in bestCaptures) yield return move;
+        foreach (Move move in bestCaptures)
+        {
+            yield return move;
+        }
 
         // Then the equal capture moves
         foreach (Move move in equalCaptureMoves) yield return move;
@@ -307,13 +322,20 @@ public class MyBot : IChessBot
         return score;
 	}
 
-	public Move Think(Board board, Timer timer)
+    public int num_moves = 0;
+    public int num_aborts = 0;
+
+    public Move Think(Board board, Timer timer)
     {
+        Stopwatch totalWatch = Stopwatch.StartNew();
+        totalTime = 0;
+        evaluationTime = 0;
+        sortedMovesTime = 0;
         System.Console.WriteLine($"Thinking... FEN: {board.GetFenString()}");
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 700;
+        int millisecondsAllowedPerTurn = 800;
         int max_depth = 8;
 
         Move best_move = Move.NullMove;
@@ -326,10 +348,18 @@ public class MyBot : IChessBot
 
         var searchTree = CreateMoveNode();
         var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, millisecondsAllowedPerTurn, timer, false, abort_search);
-        while (depth < max_depth && timer.MillisecondsElapsedThisTurn < millisecondsAllowedPerTurn)
+        int millisecondsPrevIteration = 0;
+        while (depth < max_depth && timer.MillisecondsElapsedThisTurn + (4*millisecondsPrevIteration) < millisecondsAllowedPerTurn)
         {
+            var millisecondsStartTimeThisIteration = timer.MillisecondsElapsedThisTurn;
             (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta, searchTree);
-            if (!searchParams.abort_search)
+
+            if (searchParams.abort_search)
+            {
+                Console.WriteLine($"Aborting search at depth {depth}, wasted {timer.MillisecondsElapsedThisTurn - millisecondsStartTimeThisIteration}ms");
+                num_aborts++;
+            }
+            else
             {
                 best_move = bm;
                 best_score = bs;
@@ -338,8 +368,14 @@ public class MyBot : IChessBot
             depth++;
             searchParams.max_depth = depth;
             searchParams.abort_allowed = true;
+            millisecondsPrevIteration = timer.MillisecondsElapsedThisTurn - millisecondsStartTimeThisIteration;
         }
 
+        totalWatch.Stop();
+        totalTime += totalWatch.ElapsedTicks;
+        Console.WriteLine($"Total time {totalTime}, Sorted moves time {sortedMovesTime*100/totalTime}%, Evaluation time {evaluationTime*100/totalTime}%");
+        num_moves++;
+        Console.WriteLine($"Noves played: {num_moves}, Aborts: {num_aborts}");
         return best_move;
     }
 }
