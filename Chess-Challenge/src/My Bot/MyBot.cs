@@ -135,68 +135,79 @@ public class MyBot : IChessBot
     IEnumerable<Move> GetSortedMoves(Board board, bool checksAndCapturesOnly)
     {
         Stopwatch sortingWatch = Stopwatch.StartNew();
-        Move[] moves = board.GetLegalMoves();
-        List<Move> checkMoves = new(32);
-        List<Move> bestCaptures = new(16);
-        List<Move> equalCaptureMoves = new(16);
-        List<Move> weakCaptureMoves = new(16);
-        List<Move> normalMoves = new(32);
-
-        foreach (Move move in moves)
+        if (checksAndCapturesOnly)
         {
-            board.MakeMove(move);
-            if (board.IsInCheckmate())
+            Move[] moves = board.GetLegalMoves(true);
+            sortingWatch.Stop();
+            sortedMovesTime += sortingWatch.ElapsedTicks;
+            foreach (Move move in moves) yield return move;
+        }
+        else
+        {
+            Move[] moves = board.GetLegalMoves(false);
+            List<Move> checkMoves = new(32);
+            List<Move> bestCaptures = new(16);
+            List<Move> equalCaptureMoves = new(16);
+            List<Move> weakCaptureMoves = new(16);
+            List<Move> normalMoves = new(32);
+
+            foreach (Move move in moves)
             {
-                board.UndoMove(move);
-                sortingWatch.Stop();
-                sortedMovesTime += sortingWatch.ElapsedTicks;
-                yield return move; // If this move results in checkmate, return it immediately
-                yield break;
-            }
-            else if (move.IsCapture)
-            {
-                int pieceVal = pieceValues[(int)move.MovePieceType];
-                int targetVal = pieceValues[(int)move.CapturePieceType];
-                var capList = (pieceVal, targetVal) switch
+                board.MakeMove(move);
+                if (board.IsInCheckmate())
                 {
-                    _ when (pieceVal < targetVal) => bestCaptures,
-                    _ when (pieceVal == targetVal) => equalCaptureMoves,
-                    _ => weakCaptureMoves,
-                };
+                    board.UndoMove(move);
+                    sortingWatch.Stop();
+                    sortedMovesTime += sortingWatch.ElapsedTicks;
+                    yield return move; // If this move results in checkmate, return it immediately
+                    yield break;
+                }
+                else if (move.IsCapture)
+                {
+                    int pieceVal = pieceValues[(int)move.MovePieceType];
+                    int targetVal = pieceValues[(int)move.CapturePieceType];
+                    var capList = (pieceVal, targetVal) switch
+                    {
+                        _ when (pieceVal < targetVal) => bestCaptures,
+                        _ when (pieceVal == targetVal) => equalCaptureMoves,
+                        _ => weakCaptureMoves,
+                    };
 
-                capList.Add(move);
+                    capList.Add(move);
+                }
+                else if (board.IsInCheck())
+                {
+                    checkMoves.Add(move);
+                }
+                else if (!checksAndCapturesOnly)
+                {
+                    normalMoves.Add(move);
+                }
+
+                board.UndoMove(move);
             }
-            else if (board.IsInCheck())
+
+            sortingWatch.Stop();
+            sortedMovesTime += sortingWatch.ElapsedTicks;
+            // Provide the best capture moves first
+            foreach (Move move in bestCaptures)
             {
-                checkMoves.Add(move);
-            }
-            else if (!checksAndCapturesOnly)
-            {
-                normalMoves.Add(move);
+                yield return move;
             }
 
-            board.UndoMove(move);
+            // Then the equal capture moves
+            foreach (Move move in equalCaptureMoves) yield return move;
+
+            // Then the check moves
+            foreach (Move move in checkMoves) yield return move;
+
+            // Then the weak capture moves
+            foreach (Move move in weakCaptureMoves) yield return move;
+
+            // Finally the normal moves
+            foreach (Move move in normalMoves) yield return move;
+
         }
-
-        sortingWatch.Stop();
-        sortedMovesTime += sortingWatch.ElapsedTicks;
-        // Provide the best capture moves first
-        foreach (Move move in bestCaptures)
-        {
-            yield return move;
-        }
-
-        // Then the equal capture moves
-        foreach (Move move in equalCaptureMoves) yield return move;
-
-        // Then the check moves
-        foreach (Move move in checkMoves) yield return move;
-
-        // Then the weak capture moves
-        foreach (Move move in weakCaptureMoves) yield return move;
-
-        // Finally the normal moves
-        foreach (Move move in normalMoves) yield return move;
     }
 
     record move_score_t(Move move, int score)
@@ -218,11 +229,12 @@ public class MyBot : IChessBot
 		return new MoveNode();
     }
 
-    record SearchParams(Board board, bool isWhite, int max_depth, int millisecondsAllowedPerTurn, Timer timer, bool abort_allowed, bool abort_search)
+    record SearchParams(Board board, bool isWhite, int startScore, int max_depth, int millisecondsAllowedPerTurn, Timer timer, bool abort_allowed, bool abort_search, bool debug_on = false)
     {
         public bool abort_allowed { get; set; } = abort_allowed;
         public bool abort_search { get; set; } = abort_search;
         public int max_depth { get; set; } = max_depth;
+        public bool debug_on { get; set; } = debug_on;
     }
 
     private (int, Move) get_best_move(SearchParams p, int depth, int alpha, int beta, MoveNode subtree, uint movesSinceCapture = 0)
@@ -253,6 +265,13 @@ public class MyBot : IChessBot
             // Have we run out of time?
             p.abort_search = (p.abort_allowed) && (p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn);
             if (p.abort_search) return (0, Move.NullMove);
+
+            // Have we used up too much time but have an okay move?
+            if (depth == 1 && p.timer.MillisecondsElapsedThisTurn > (p.millisecondsAllowedPerTurn * 4) && best_score_this_level >= p.startScore - 100)
+            {
+                Console.WriteLine($"Stopping search at depth {p.max_depth} because we are taking too long and have an okay move {best_move_this_level} score {best_score_this_level}");
+                return (best_score_this_level, best_move_this_level);
+            }
 
             node.evaluation = score;
             subtree.children[move] = node;
@@ -288,7 +307,7 @@ public class MyBot : IChessBot
         int score = 0;
         p.board.MakeMove(move);
 
-        if (evaluated_positions.TryGetValue(p.board.ZobristKey, out var cached_entry) && cached_entry.depth >= p.max_depth)
+        if (evaluated_positions.TryGetValue(p.board.ZobristKey, out var cached_entry) && cached_entry.depth >= (p.max_depth  - depth))
         {
             score = cached_entry.score;
         }
@@ -307,7 +326,7 @@ public class MyBot : IChessBot
                 (score, _) = get_best_move(p, depth, alpha, beta, node, move.IsCapture ? 0 : movesSinceCapture);
             }
 
-            evaluated_positions[p.board.ZobristKey] = new CacheEntry(depth, score);
+            evaluated_positions[p.board.ZobristKey] = new CacheEntry(p.max_depth - depth, score);
         }
         p.board.UndoMove(move);
 
@@ -347,9 +366,10 @@ public class MyBot : IChessBot
         bool abort_search = false;
 
         var searchTree = CreateMoveNode();
-        var searchParams = new SearchParams(board, board.IsWhiteToMove, depth, millisecondsAllowedPerTurn, timer, false, abort_search);
+        int startScore = Evaluate(board, board.IsWhiteToMove);
+        var searchParams = new SearchParams(board, board.IsWhiteToMove, startScore, depth, millisecondsAllowedPerTurn, timer, false, abort_search);
         int millisecondsPrevIteration = 0;
-        while (depth < max_depth && timer.MillisecondsElapsedThisTurn + (4*millisecondsPrevIteration) < millisecondsAllowedPerTurn)
+        while (depth < max_depth && (timer.MillisecondsElapsedThisTurn * 8)  < millisecondsAllowedPerTurn)
         {
             var millisecondsStartTimeThisIteration = timer.MillisecondsElapsedThisTurn;
             (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta, searchTree);
@@ -373,7 +393,7 @@ public class MyBot : IChessBot
 
         totalWatch.Stop();
         totalTime += totalWatch.ElapsedTicks;
-        Console.WriteLine($"Total time {totalTime}, Sorted moves time {sortedMovesTime*100/totalTime}%, Evaluation time {evaluationTime*100/totalTime}%");
+        // Console.WriteLine($"Total time {totalTime}, Sorted moves time {sortedMovesTime*100/totalTime}%, Evaluation time {evaluationTime*100/totalTime}%");
         num_moves++;
         Console.WriteLine($"Noves played: {num_moves}, Aborts: {num_aborts}");
         return best_move;
