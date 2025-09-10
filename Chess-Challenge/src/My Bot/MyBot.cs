@@ -354,7 +354,7 @@ public class MyBot : IChessBot
         evaluationCount = 0;
         evaluated_positions.Clear();
 
-        int millisecondsAllowedPerTurn = 800;
+        int millisecondsAllowedPerTurn = 1000;
         int max_depth = 8;
 
         Move best_move = Move.NullMove;
@@ -369,7 +369,7 @@ public class MyBot : IChessBot
         int startScore = Evaluate(board, board.IsWhiteToMove);
         var searchParams = new SearchParams(board, board.IsWhiteToMove, startScore, depth, millisecondsAllowedPerTurn, timer, false, abort_search);
         int millisecondsPrevIteration = 0;
-        while (depth < max_depth && (timer.MillisecondsElapsedThisTurn * 4)  < millisecondsAllowedPerTurn)
+        while (depth < max_depth && (timer.MillisecondsElapsedThisTurn * 6)  < millisecondsAllowedPerTurn)
         {
             var millisecondsStartTimeThisIteration = timer.MillisecondsElapsedThisTurn;
             (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta, searchTree);
