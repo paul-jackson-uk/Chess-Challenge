@@ -13,10 +13,10 @@ using Microsoft.CodeAnalysis;
 public class MyBot : IChessBot
 {
     private const int checkmateScore = 1000000;
-    private const uint MaxMovesSinceCapture = 2;
+    private const uint MaxMovesSinceCapture = 1;
     public static int evaluationCount = 0;
     private Dictionary<ulong, CacheEntry> evaluated_positions = new();
-    private int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
+    private int[] pieceValues = { 0, 100, 300, 320, 500, 900, 20000 }; // none, Pawn, Knight, Bishop, Rook, Queen, King
 
     private long totalTime = 0;
     private long sortedMovesTime = 0;
@@ -26,8 +26,8 @@ public class MyBot : IChessBot
 
     private int GetEdgeDistance(int squareIndex)
     {
-        int row = squareIndex / 8;
-        int col = squareIndex % 8;
+        int row = squareIndex >> 3;
+        int col = squareIndex & 7;
 
         // Calculate the distance to the nearest edge
         int distanceToEdge = Math.Min(Math.Min(row, 7 - row), Math.Min(col, 7 - col));
@@ -369,7 +369,7 @@ public class MyBot : IChessBot
         int startScore = Evaluate(board, board.IsWhiteToMove);
         var searchParams = new SearchParams(board, board.IsWhiteToMove, startScore, depth, millisecondsAllowedPerTurn, timer, false, abort_search);
         int millisecondsPrevIteration = 0;
-        while (depth < max_depth && (timer.MillisecondsElapsedThisTurn * 8)  < millisecondsAllowedPerTurn)
+        while (depth < max_depth && (timer.MillisecondsElapsedThisTurn * 4)  < millisecondsAllowedPerTurn)
         {
             var millisecondsStartTimeThisIteration = timer.MillisecondsElapsedThisTurn;
             (int bs, Move bm) = get_best_move(searchParams, 0, alpha, beta, searchTree);
