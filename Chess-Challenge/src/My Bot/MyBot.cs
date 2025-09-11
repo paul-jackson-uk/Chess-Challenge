@@ -36,17 +36,21 @@ public class MyBot : IChessBot
     private int Evaluate(Board board, bool isWhite)
     {
         Stopwatch evalWatch = Stopwatch.StartNew();
+        string fen = board.GetFenString();
         //System.Console.WriteLine("Evaluating position... FEN " + board.GetFenString());
         evaluationCount++;
         bool isEndGame = false;
 
         PieceList[] pieceLists = board.GetAllPieceLists();
 
-        int opponentAttackingPieceCount = 0;
-        ulong oppAttackingPieceBB = (isWhite ? board.BlackPiecesBitboard : board.WhitePiecesBitboard) &
-                    ~(board.GetPieceBitboard(PieceType.King, !isWhite) | board.GetPieceBitboard(PieceType.Pawn, !isWhite));
-        opponentAttackingPieceCount = BitboardHelper.GetNumberOfSetBits(oppAttackingPieceBB);
-        isEndGame = (opponentAttackingPieceCount < 4) && board.GetPieceList(PieceType.Queen, !isWhite).Count > 0;
+        int pieceCount = 0;
+        foreach (PieceList pl in pieceLists)
+        {
+            if (pl.TypeOfPieceInList == PieceType.King) continue;
+            if (pl.TypeOfPieceInList == PieceType.Pawn) continue;
+            pieceCount += pl.Count * pieceValues[(int)pl.TypeOfPieceInList];
+        }
+        if (pieceCount < 1300) isEndGame = true;
 
         // Simple evaluation function: count material balance
         int score = 0;
@@ -57,6 +61,8 @@ public class MyBot : IChessBot
             int pawnFiles = 0;
             for (int i = 0; i < pl.Count; i++)
             {
+                bool isPieceWhite = pl.IsWhitePieceList;
+
                 // Add material value
                 if (pl.TypeOfPieceInList is not PieceType.King) value = pieceValues[(int)pl.TypeOfPieceInList];
 
@@ -70,7 +76,7 @@ public class MyBot : IChessBot
                         value += 20 * (GetEdgeDistance(sq.Index) - 1);
 
                         // Encourage pawn pushing in endgame
-                        if (isEndGame) value += (board.IsWhiteToMove ? sq.Rank : 7 - sq.Rank) << 4;
+                        if (isEndGame) value += (isPieceWhite ? sq.Rank : 7 - sq.Rank) << 5;
 
                         // Look for doubled pawns
                         int pawnFileMask = 1 << sq.File;
@@ -94,28 +100,30 @@ public class MyBot : IChessBot
                         else if (board.PlyCount < 10)
                         {
                             var queenRank = sq.Rank;
-                            if (!board.IsWhiteToMove) queenRank = 7 - queenRank;
+                            if (!pl.IsWhitePieceList) queenRank = 7 - queenRank;
                             value += 20 * (3 - queenRank);
                         }
                         break;
                     case PieceType.King:
                         if (isEndGame)
                         {
-                            // In endgame, we want the king to be more active
-                            value += 30 * GetEdgeDistance(sq.Index);
+                            // In endgame, we want the king to move towards the opponent's king
+                            Square opponentKingSquare = board.GetKingSquare(! isPieceWhite);
+                            int distance = (int)(Math.Pow(sq.File - opponentKingSquare.File, 2) + Math.Pow(sq.Rank - opponentKingSquare.Rank, 2));
+                            value += 100 - distance;
                         }
                         else
                         {
                             // Keep the king on the back rank ideally towards the corner
-                            var kingSquare = board.GetKingSquare(board.IsWhiteToMove);
-                            int kingRank = board.IsWhiteToMove ? kingSquare.Rank : 7 - kingSquare.Rank;
+                            var kingSquare = board.GetKingSquare(isPieceWhite);
+                            int kingRank = isPieceWhite ? kingSquare.Rank : 7 - kingSquare.Rank;
                             value += ((7 - kingRank) * 10) + (Math.Min(kingSquare.File, (7 - kingSquare.File)) << 3);
                         }
                         break;
                 }
 
                 // Add or subtract piece value based on colour
-                if (pl.IsWhitePieceList != isWhite) value = -value;
+                if (isPieceWhite != isWhite) value = -value;
                 score += value;
             }
         }
