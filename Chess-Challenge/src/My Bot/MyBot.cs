@@ -33,7 +33,7 @@ public class MyBot : IChessBot
         int distanceToEdge = Math.Min(Math.Min(row, 7 - row), Math.Min(col, 7 - col));
         return distanceToEdge;
     }
-    private int Evaluate(Board board, bool isWhite)
+    private int Evaluate(Board board, bool isWhite, bool debug_on = false)
     {
         Stopwatch evalWatch = Stopwatch.StartNew();
         string fen = board.GetFenString();
@@ -128,16 +128,12 @@ public class MyBot : IChessBot
 
                 // Add or subtract piece value based on colour
                 if (isPieceWhite != isWhite) value = -value;
+                if (debug_on) Console.WriteLine($"Piece {pl.TypeOfPieceInList} on {sq} value {value}");
                 score += value;
             }
         }
 
-#if false
-        // Boost for having more legal moves
-        int legal_moves_boost = 10 - board.GetLegalMoves().Length;
-        if (board.IsWhiteToMove == isWhite) legal_moves_boost = -legal_moves_boost;
-        score += legal_moves_boost;
-#endif
+
         evalWatch.Stop();
         evaluationTime += evalWatch.ElapsedTicks;
         return score;
