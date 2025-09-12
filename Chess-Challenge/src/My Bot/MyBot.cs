@@ -54,6 +54,9 @@ public class MyBot : IChessBot
 
         // Simple evaluation function: count material balance
         int score = 0;
+        int whitePawnFiles = 0;
+        int blackPawnFiles = 0;
+
         foreach (PieceList pl in pieceLists)
         {
             // add up material value of pieces
@@ -62,6 +65,7 @@ public class MyBot : IChessBot
             for (int i = 0; i < pl.Count; i++)
             {
                 bool isPieceWhite = pl.IsWhitePieceList;
+                ref int pawnFiles = ref isPieceWhite ? ref whitePawnFiles : ref blackPawnFiles;
 
                 // Add material value
                 if (pl.TypeOfPieceInList is not PieceType.King) value = pieceValues[(int)pl.TypeOfPieceInList];
