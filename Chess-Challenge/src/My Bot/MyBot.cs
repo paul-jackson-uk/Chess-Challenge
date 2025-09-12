@@ -36,7 +36,6 @@ public class MyBot : IChessBot
     private int Evaluate(Board board, bool isWhite, bool debug_on = false)
     {
         Stopwatch evalWatch = Stopwatch.StartNew();
-        string fen = board.GetFenString();
         //System.Console.WriteLine("Evaluating position... FEN " + board.GetFenString());
         evaluationCount++;
         bool isEndGame = false;
@@ -50,7 +49,7 @@ public class MyBot : IChessBot
             if (pl.TypeOfPieceInList == PieceType.Pawn) continue;
             pieceCount += pl.Count * pieceValues[(int)pl.TypeOfPieceInList];
         }
-        if (pieceCount < 1300) isEndGame = true;
+        if (pieceCount < 1700) isEndGame = true;
 
         // Simple evaluation function: count material balance
         int score = 0;
