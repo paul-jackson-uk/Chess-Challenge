@@ -342,7 +342,7 @@ public class MyBot : IChessBot
         {
             // The player doesn't have to make any of the captures or checks so we should
             // also do an evaluation and see whether that is better for them
-            int evalScore = Evaluate(p.board, p.isWhite);
+            int evalScore = Evaluate(p.board, p.isWhite, p.debug_on);
             score = ourMove ? Math.Max(score, evalScore) : Math.Min(score, evalScore);
         }
 
