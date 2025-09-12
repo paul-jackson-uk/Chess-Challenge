@@ -22,6 +22,10 @@ public class MyBot : IChessBot
     private long sortedMovesTime = 0;
     private long evaluationTime = 0;
 
+    private const ulong centre16Mask = 0x3c3c3c3C0000;
+    private const ulong centre4Mask = 0x1818000000;
+    private const ulong goodKnightSquaresMask = 0x3C3C3C000000;
+
     record CacheEntry(int depth, int score);
 
     private int GetEdgeDistance(int squareIndex)
@@ -60,7 +64,6 @@ public class MyBot : IChessBot
         {
             // add up material value of pieces
             int value = 0;
-            int pawnFiles = 0;
             for (int i = 0; i < pl.Count; i++)
             {
                 bool isPieceWhite = pl.IsWhitePieceList;
@@ -75,11 +78,18 @@ public class MyBot : IChessBot
                 switch (pl.TypeOfPieceInList)
                 {
                     case PieceType.Pawn:
-                        // encourage pawns in the centre
-                        value += 20 * (GetEdgeDistance(sq.Index) - 1);
-
                         // Encourage pawn pushing in endgame
-                        if (isEndGame) value += (isPieceWhite ? sq.Rank : 7 - sq.Rank) << 5;
+                        if (isEndGame)
+                        {
+                            value += (isPieceWhite ? sq.Rank : 7 - sq.Rank) << 5;
+                        }
+                        else
+                        {
+                            // Encourage central pawns
+                            ulong pawnBit = 1UL << sq.Index;
+                            if ((centre4Mask & pawnBit) != 0) value += 25;
+                            else if ((centre16Mask & pawnBit) != 0) value += 10;
+                        }
 
                         // Look for doubled pawns
                         int pawnFileMask = 1 << sq.File;
@@ -89,6 +99,9 @@ public class MyBot : IChessBot
                     case PieceType.Knight:
                         // Add positional score for pieces
                         value += 8 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetKnightAttacks(pl.GetPiece(i).Square));
+                        // Encourage knights in good squares
+                        ulong knightBit = 1UL << sq.Index;
+                        if ((goodKnightSquaresMask & knightBit) != 0) value += 20;
                         break;
                     case PieceType.Bishop:
                     case PieceType.Rook:
