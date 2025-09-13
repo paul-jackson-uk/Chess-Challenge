@@ -46,6 +46,7 @@ public class MyBot : IChessBot
 
         PieceList[] pieceLists = board.GetAllPieceLists();
 
+        // This loop seems to be faster than using LINQ to sum up the piece values
         int pieceCount = 0;
         foreach (PieceList pl in pieceLists)
         {
@@ -53,7 +54,7 @@ public class MyBot : IChessBot
             if (pl.TypeOfPieceInList == PieceType.Pawn) continue;
             pieceCount += pl.Count * pieceValues[(int)pl.TypeOfPieceInList];
         }
-        if (pieceCount < 1700) isEndGame = true;
+        if (pieceCount < 1900) isEndGame = true;
 
         // Simple evaluation function: count material balance
         int score = 0;
@@ -93,7 +94,7 @@ public class MyBot : IChessBot
 
                         // Look for doubled pawns
                         int pawnFileMask = 1 << sq.File;
-                        if ((pawnFiles & pawnFileMask) != 0) value -= 40;
+                        if ((pawnFiles & pawnFileMask) != 0) value -= 60;
                         pawnFiles |= pawnFileMask;
                         break;
                     case PieceType.Knight:
@@ -279,11 +280,10 @@ public class MyBot : IChessBot
 
         foreach (Move move in sortedMoves)
         {
-            MoveNode node;
-            int score = TryMove(p, depth, alpha, beta, movesSinceCapture, ourMove, checksAndCapturesOnly, move, out node);
+			int score = TryMove(p, depth, alpha, beta, movesSinceCapture, ourMove, checksAndCapturesOnly, move, out MoveNode node);
 
-            // Have we run out of time?
-            p.abort_search = (p.abort_allowed) && (p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn);
+			// Have we run out of time?
+			p.abort_search = (p.abort_allowed) && (p.millisecondsAllowedPerTurn < p.timer.MillisecondsElapsedThisTurn);
             if (p.abort_search) return (0, Move.NullMove);
 
             // Have we used up too much time but have an okay move?
