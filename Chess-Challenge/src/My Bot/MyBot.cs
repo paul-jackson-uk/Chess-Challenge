@@ -106,7 +106,11 @@ public class MyBot : IChessBot
                         break;
                     case PieceType.Bishop:
                     case PieceType.Rook:
-                        value += (4 * BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, sq, board)));
+                        ulong sliderAttacks = BitboardHelper.GetSliderAttacks(pl.TypeOfPieceInList, sq, board);
+                        value += (4 * BitboardHelper.GetNumberOfSetBits(sliderAttacks));
+
+                        // Add points for covering opponents half of the board
+                        value += 4 * BitboardHelper.GetNumberOfSetBits(sliderAttacks & (isPieceWhite ? 0xFFFFFFFF00000000 : 0x00000000FFFFFFFF));
                         break;
                     case PieceType.Queen:
                         if (isEndGame)
